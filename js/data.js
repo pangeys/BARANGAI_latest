@@ -207,3 +207,38 @@ const REPORT_TYPES = [
   { icon: '⚡', title: 'Priority Distribution Report',   desc: 'Breakdown of complaint priority tiers'   },
   { icon: '📋', title: 'Resolution Time Report',         desc: 'Average time to resolve per category'    },
 ];
+
+/* ── Status flow ── */
+const STATUS_FLOW = ['Open', 'In Progress', 'For Hearing', 'Resolved'];
+
+/* ── Augmentation techniques (documentation only) ── */
+const AUG_TECHNIQUES = [
+  'Random word deletion (12% probability on non-protected words)',
+  'Random word swap (1 pair per record)',
+  'Random word insertion (1 content word per record)',
+];
+
+/* ── Report items ── */
+const REPORT_ITEMS = [
+  { icon: '📊', title: 'Classification Accuracy Report', desc: 'Model performance metrics per category'   },
+  { icon: '📈', title: 'Complaint Volume Report',        desc: 'Complaints filed over time by category'  },
+  { icon: '⏱️', title: 'Response Time Report',           desc: 'Avg handling and resolution times'       },
+  { icon: '📋', title: 'Case Outcome Report',            desc: 'Breakdown of resolutions and escalations'},
+];
+
+/* ── Settings fields ── */
+const SETTINGS_FIELDS = [
+  { label: 'System Name',   value: 'BarangAI - Barangay Intelligent Case Tracking System' },
+  { label: 'Barangay Name', value: '' },
+  { label: 'Municipality',  value: '' },
+  { label: 'Admin Email',   value: '' },
+];
+
+/* ── Settings toggles ── */
+const SETTINGS_TOGGLES = [
+  { name: 'Auto-classify on submission (SVM)',  desc: 'Use SVM (TF-IDF bigrams) to auto-classify when submitted',   on: true  },
+  { name: 'Allow anonymous complaint filing',   desc: 'Residents can submit without personal information',           on: true  },
+  { name: 'Confidence threshold flag (<70%)',   desc: 'Flag complaints below 70% confidence for manual review',      on: true  },
+  { name: 'Human-in-the-loop validation',       desc: 'Officers must validate AI classification before finalizing',  on: false },
+  { name: 'BiLSTM fallback classification',     desc: 'Use BiLSTM if SVM confidence is below threshold',            on: false },
+];
