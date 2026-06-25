@@ -5,7 +5,7 @@
    AHP weights, or NLP pipeline steps.
 
    ── Current dataset/model ──
-   6 KP categories (RA 7160), 2,152 real complaint records
+   6 KP categories (RA 7160), 3,716 real complaint records
    SVM trained via Colab, exported as svm_model.json
    Fuzzy AHP weights derived via Colab, exported as fuzzy_ahp_config.json
 ═══════════════════════════════════════════════════════ */
@@ -150,43 +150,43 @@ const CLASSIFY_RULES = [
 
 /* ── Experiment results (from SVM Colab notebook) ── */
 const MODEL_ACCURACY_BARS = [
-  { label: 'SVM (100% — best)', value: 81.67 },
-  { label: 'NB (100%)',         value: 78.65 },
-  { label: 'BiLSTM (100%)',     value: 69.84 },
+  { label: 'SVM (100% — best)', value: 86.29 },
+  { label: 'NB (100%)',         value: 76.08 },
+  { label: 'BiLSTM (100%)',     value: 73.79 },
 ];
 
 const DATASET_VERSIONS = [
-  { ver: '25%  (431 train)',  train: 431,  nb: 71.88, svm: 74.24, bi: 58.69, best: false },
-  { ver: '50%  (861 train)',  train: 861,  nb: 75.75, svm: 77.37, bi: 56.55, best: false },
-  { ver: '75%  (1291 train)', train: 1291, nb: 77.74, svm: 79.64, bi: 65.51, best: false },
-  { ver: '100% (1721 train)', train: 1721, nb: 78.46, svm: 81.50, bi: 70.05, best: true  },
+  { ver: '25%  (743 train)',  train: 743,  nb: 64.85, svm: 70.88, bi: 63.18, best: false },
+  { ver: '50%  (1486 train)', train: 1486, nb: 71.56, svm: 80.61, bi: 68.56, best: false },
+  { ver: '75%  (2229 train)', train: 2229, nb: 74.82, svm: 84.14, bi: 70.54, best: false },
+  { ver: '100% (2972 train)', train: 2972, nb: 76.02, svm: 86.26, bi: 74.11, best: true  },
 ];
 
 const MODEL_COMPARISON_V2 = [
-  { metric: 'Accuracy',   nb: '78.65%', svm: '81.67%', bi: '69.84%' },
-  { metric: 'Precision',  nb: '80.62%', svm: '81.67%', bi: '71.86%' },
-  { metric: 'Recall',     nb: '78.65%', svm: '81.67%', bi: '69.84%' },
-  { metric: 'F1-Score',   nb: '78.46%', svm: '81.50%', bi: '70.05%' },
-  { metric: 'Train Time', nb: '0.15s',  svm: '1.39s',  bi: '160.58s' },
-  { metric: 'Infer Time', nb: '0.0006s',svm: '0.0005s',bi: '2.93s'  },
+  { metric: 'Accuracy',   nb: '76.08%', svm: '86.29%', bi: '73.79%' },
+  { metric: 'Precision',  nb: '76.73%', svm: '86.37%', bi: '74.77%' },
+  { metric: 'Recall',     nb: '76.08%', svm: '86.29%', bi: '73.79%' },
+  { metric: 'F1-Score',   nb: '76.02%', svm: '86.26%', bi: '74.11%' },
+  { metric: 'Train Time', nb: '0.15s',  svm: '4.02s',  bi: '503.03s' },
+  { metric: 'Infer Time', nb: '0.0007s',svm: '0.0006s',bi: '3.52s'  },
 ];
 
 const PER_CATEGORY_REPORT = [
-  { cat: 'Contract Disputes',       prec: '0.7869', rec: '0.8421', f1: '0.8136', sup: 57 },
-  { cat: 'Family Matters',          prec: '0.8103', rec: '0.7833', f1: '0.7966', sup: 60 },
-  { cat: 'Money/Debt Disputes',     prec: '0.8229', rec: '0.8681', f1: '0.8449', sup: 91 },
-  { cat: 'Neighbor Disputes',       prec: '0.8485', rec: '0.7467', f1: '0.7943', sup: 75 },
-  { cat: 'Petty Criminal Offenses', prec: '0.7800', rec: '0.6842', f1: '0.7290', sup: 57 },
-  { cat: 'Property Disputes',       prec: '0.8300', rec: '0.9121', f1: '0.8691', sup: 91 },
+  { cat: 'Contract Disputes',       prec: '0.9293', rec: '0.8679', f1: '0.8976', sup: 106 },
+  { cat: 'Family Matters',          prec: '0.8487', rec: '0.8632', f1: '0.8559', sup: 117 },
+  { cat: 'Money/Debt Disputes',     prec: '0.8690', rec: '0.9265', f1: '0.8968', sup: 136 },
+  { cat: 'Neighbor Disputes',       prec: '0.8538', rec: '0.8222', f1: '0.8377', sup: 135 },
+  { cat: 'Petty Criminal Offenses', prec: '0.8571', rec: '0.7965', f1: '0.8257', sup: 113 },
+  { cat: 'Property Disputes',       prec: '0.8356', rec: '0.8905', f1: '0.8622', sup: 137 },
 ];
 
 const DATASET_CONSOLIDATION = [
-  { merged: 'Contract Disputes',       original: 'Contract/Agreement Disputes',            min: 0, total: 284 },
-  { merged: 'Family Matters',          original: 'Family/Domestic Disputes',               min: 0, total: 298 },
-  { merged: 'Money/Debt Disputes',     original: 'Money/Debt/Financial Disputes',          min: 0, total: 453 },
-  { merged: 'Neighbor Disputes',       original: 'Neighbor/Community Disputes',            min: 0, total: 377 },
-  { merged: 'Petty Criminal Offenses', original: 'Petty Criminal Offenses (RA 7160 §408)', min: 0, total: 286 },
-  { merged: 'Property Disputes',       original: 'Property/Land Disputes',                 min: 0, total: 454 },
+  { merged: 'Contract Disputes',       original: 'Contract/Agreement Disputes',            min: 0, total: 530 },
+  { merged: 'Family Matters',          original: 'Family/Domestic Disputes',               min: 0, total: 585 },
+  { merged: 'Money/Debt Disputes',     original: 'Money/Debt/Financial Disputes',          min: 0, total: 681 },
+  { merged: 'Neighbor Disputes',       original: 'Neighbor/Community Disputes',            min: 0, total: 675 },
+  { merged: 'Petty Criminal Offenses', original: 'Petty Criminal Offenses (RA 7160 §408)', min: 0, total: 563 },
+  { merged: 'Property Disputes',       original: 'Property/Land Disputes',                 min: 0, total: 682 },
 ];
 
 /* ── NLP preprocessing pipeline steps ── */
