@@ -106,7 +106,7 @@
         </div>
         <div class="card-body">
           <div id="accuracy-bars"></div>
-          <div class="alert alert-info" style="margin-bottom:0;">🤖 <strong>Active model: SVM</strong> — best F1-score (81.50%) on the locked test set. Trained on 2,152 real barangay complaint records across 6 KP categories.</div>
+          <div class="alert alert-info" style="margin-bottom:0;">🤖 <strong>Active model: SVM</strong> — best F1-score (86.26%) on the locked test set. Trained on 3,716 real barangay complaint records across 6 KP categories.</div>
         </div>
       </div>
     </div>
@@ -306,28 +306,28 @@
 <div id="screen-ai" class="screen">
   <div class="page-header">
     <div class="page-title">AI Classification Results</div>
-    <div class="page-sub">NLP model performance · 2,152 real complaint records · 6 KP categories (RA 7160) · 80/20 stratified split · locked test set (431 samples)</div>
+    <div class="page-sub">NLP model performance · 3,716 real complaint records · 6 KP categories (RA 7160) · 80/20 stratified split · locked test set (744 samples)</div>
   </div>
   <div class="stats-grid">
     <div class="stat-card green">
       <div class="stat-label">SVM Accuracy (100%)</div>
-      <div class="stat-value" style="color:var(--green)">81.67%</div>
+      <div class="stat-value" style="color:var(--green)">86.29%</div>
       <div class="stat-delta">Best performing model ★</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">SVM F1-Score (100%)</div>
-      <div class="stat-value">81.50%</div>
-      <div class="stat-delta">Weighted F1 · 198 locked test samples</div>
+      <div class="stat-value">86.26%</div>
+      <div class="stat-delta">Weighted F1 · 744 locked test samples</div>
     </div>
     <div class="stat-card amber">
       <div class="stat-label">Naive Bayes (100%)</div>
-      <div class="stat-value" style="color:var(--amber)">61.62%</div>
+      <div class="stat-value" style="color:var(--amber)">76.08%</div>
       <div class="stat-delta">Baseline · fastest inference</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">BiLSTM (100%)</div>
-      <div class="stat-value">57.07%</div>
-      <div class="stat-delta">Limited by short text length</div>
+      <div class="stat-value">73.79%</div>
+      <div class="stat-delta">Sequential model · slowest inference</div>
     </div>
   </div>
   <div class="card" style="margin-bottom:16px;">
