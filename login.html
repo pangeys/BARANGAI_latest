@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BarangAI – Sign In</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="mobile-responsive.css">   <!-- ADD THIS LINE -->
+<style>
+  .auth-switch{text-align:center;margin-top:14px;font-size:12px;color:var(--text3)}
+  .auth-switch a{color:var(--blue);cursor:pointer;font-weight:600;text-decoration:none}
+  .auth-switch a:hover{text-decoration:underline}
+  .auth-msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:12px;display:none;line-height:1.5}
+  .auth-msg.err{display:block;background:rgba(192,57,43,.12);color:#c0392b}
+  .auth-msg.ok{display:block;background:rgba(30,126,52,.12);color:#1e7e34}
+  .row2 { display: flex; gap: 12px; width: 100%; box-sizing: border-box; }
+  .row2 .field { flex: 1 1 0; min-width: 0; }
+  .row2 .field .inp {
+  width: 100%; min-width: 0;
+  box-sizing: border-box; /* ADD THIS — was missing, causing overflow */
+}
+  .auth-hidden{display:none !important}
+
+  /* ---- profile modal (added) ---- */
+  .pf-overlay{position:fixed;inset:0;background:rgba(15,39,71,.55);display:none;
+    align-items:center;justify-content:center;z-index:999;padding:18px}
+  .pf-overlay.open{display:flex}
+  .pf-card{background:#fff;border-radius:16px;padding:26px;max-width:440px;width:100%;
+    box-shadow:0 20px 50px rgba(0,0,0,.25);max-height:92vh;overflow:auto}
+  .pf-title{font-size:19px;font-weight:700;color:var(--text1,#1f2a37);margin-bottom:4px}
+  .pf-sub{font-size:13px;color:var(--text3,#6b7685);margin-bottom:16px}
+  .pf-kv{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid #eef1f6;font-size:14px}
+  .pf-kv:last-child{border-bottom:none}
+  .pf-kv span:first-child{color:var(--text3,#6b7685)}
+  .pf-kv span:last-child{font-weight:600;color:var(--text1,#1f2a37)}
+  .pf-row{display:flex;gap:12px}
+  .pf-row .field{flex:1}
+  .pf-actions{display:flex;gap:10px;margin-top:20px}
+  .pf-note{font-size:11px;color:var(--text3,#6b7685);margin-top:12px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-deco"></div>
+  <div class="login-deco"></div>
+
+  <!-- LOGIN CARD -->
+  <div class="login-card" id="loginCard">
+    <div class="login-logo">Barang<span>AI</span></div>
+    <div class="login-sub">Barangay Intelligent Case Tracking System<br>Authorized personnel only</div>
+
+    <div id="loginMsg" class="auth-msg"></div>
+
+    <div class="field" style="margin-bottom:12px;">
+      <div class="label">Username / Email</div>
+      <input class="inp filled" id="loginId" type="text" placeholder="Enter your email">
+    </div>
+    <div class="field" style="margin-bottom:20px;">
+      <div class="label">Password</div>
+      <input class="inp filled" id="loginPw" type="password" placeholder="Enter your password">
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);">
+        <input type="checkbox" checked> Remember me
+      </label>
+      <span style="font-size:12px;color:var(--blue);cursor:pointer;">Forgot password?</span>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;" id="signInBtn">Sign In →</button>
+    <div style="text-align:center;margin-top:14px;font-size:11px;color:var(--text3);">System access is restricted to authorized barangay personnel only.</div>
+    <div class="auth-switch">Are you a resident? <a id="toSignup">Create an account</a></div>
+  </div>
+
+  <!-- SIGN UP CARD -->
+  <div class="login-card auth-hidden" id="signupCard">
+    <div class="login-logo">Barang<span>AI</span></div>
+    <div class="login-sub">Resident Registration<br>Submit and track your complaints</div>
+
+    <div id="signupMsg" class="auth-msg"></div>
+
+    <div class="field" style="margin-bottom:12px;">
+      <div class="label">Full Name *</div>
+      <input class="inp filled" id="su_name" type="text" placeholder="Juan Dela Cruz">
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <div class="label">Email *</div>
+      <input class="inp filled" id="su_email" type="email" placeholder="you@example.com">
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <div class="label">Barangay *</div>
+      <select class="inp sel" id="su_brgy"><option value="">Select your barangay…</option></select>
+    </div>
+    <div class="row2">
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">Password *</div>
+        <input class="inp filled" id="su_pw" type="password" placeholder="Min 6 chars">
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">Confirm *</div>
+        <input class="inp filled" id="su_pw2" type="password" placeholder="Re-type">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <div class="label">Phone (optional)</div>
+      <input class="inp filled" id="su_phone" type="text" placeholder="09XXXXXXXXX">
+    </div>
+    <div class="field" style="margin-bottom:20px;">
+      <div class="label">Address (optional)</div>
+      <input class="inp filled" id="su_addr" type="text" placeholder="House no., street, purok">
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;" id="signUpBtn">Create Account →</button>
+    <div class="auth-switch">Already have an account? <a id="toLogin">Sign in</a></div>
+  </div>
+
+</div>
+
+<!-- ════════ PROFILE SETUP MODAL (first login — forced) ════════ -->
+<div class="pf-overlay" id="setupOverlay">
+  <div class="pf-card">
+    <div class="pf-title">Complete your profile</div>
+    <div class="pf-sub">Welcome! Please confirm your details before continuing.</div>
+    <div id="setupMsg" class="auth-msg"></div>
+
+    <div class="field" style="margin-bottom:12px;">
+      <div class="label">Full name *</div>
+      <input class="inp filled" id="pf_name" type="text">
+    </div>
+    <div class="pf-row">
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">Email *</div>
+        <input class="inp filled" id="pf_email" type="email">
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">Phone</div>
+        <input class="inp filled" id="pf_phone" type="text" placeholder="09XXXXXXXXX">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <div class="label">Address</div>
+      <input class="inp filled" id="pf_addr" type="text" placeholder="Office / address">
+    </div>
+    <div class="pf-row">
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">Role (assigned — read only)</div>
+        <input class="inp filled" id="pf_role" type="text" disabled style="background:#f6f8fb;color:#6b7685;">
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">New password (optional)</div>
+        <input class="inp filled" id="pf_pw" type="password" placeholder="Leave blank to keep">
+      </div>
+    </div>
+    <div class="pf-actions">
+      <button class="btn btn-primary" style="flex:1;justify-content:center;padding:10px;" id="pfSaveBtn">Save &amp; continue →</button>
+    </div>
+    <div class="pf-note">Your role is set by the system and can't be changed here. This prevents anyone from granting themselves admin access.</div>
+  </div>
+</div>
+
+<!-- ════════ CONFIRM MODAL (returning login) ════════ -->
+<div class="pf-overlay" id="confirmOverlay">
+  <div class="pf-card">
+    <div class="pf-title">You're signing in as</div>
+    <div class="pf-sub">Confirm your details to continue.</div>
+    <div class="pf-kv"><span>Name</span><span id="cf_name">—</span></div>
+    <div class="pf-kv"><span>Email</span><span id="cf_email">—</span></div>
+    <div class="pf-kv"><span>Role</span><span id="cf_role">—</span></div>
+    <div class="pf-kv"><span>Last login</span><span id="cf_last">—</span></div>
+    <div class="pf-actions">
+      <button class="btn btn-primary" style="flex:1;justify-content:center;padding:10px;" id="cfConfirmBtn">Confirm &amp; continue →</button>
+      <button class="btn" style="justify-content:center;padding:10px 16px;border:1px solid #e3e8ef;background:#fff;" id="cfEditBtn">Edit</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const AUTH    = 'api/auth.php';
+const PROFILE = 'api/profile.php';
+const $ = id => document.getElementById(id);
+
+let _redirectTo = 'index.html';   // where to go once the gate passes
+
+function showMsg(elId, type, text){ const el=$(elId); el.className='auth-msg '+type; el.textContent=text; }
+function clearMsg(elId){ $(elId).className='auth-msg'; $(elId).textContent=''; }
+
+$('toSignup').addEventListener('click', function(){
+  $('loginCard').classList.add('auth-hidden');
+  $('signupCard').classList.remove('auth-hidden');
+  loadBarangays();
+});
+$('toLogin').addEventListener('click', function(){
+  $('signupCard').classList.add('auth-hidden');
+  $('loginCard').classList.remove('auth-hidden');
+});
+
+/* ════════ LOGIN + PROFILE GATE ════════ */
+async function doLogin(){
+  clearMsg('loginMsg');
+  var id = $('loginId').value.trim();
+  var pw = $('loginPw').value;
+  if (!id || !pw){ showMsg('loginMsg','err','Enter your username/email and password.'); return; }
+  $('signInBtn').disabled = true;
+  $('signInBtn').textContent = 'Signing in…';
+  try {
+    var res = await fetch(AUTH + '?action=login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body: JSON.stringify({
+    identifier: id,
+    password: pw,
+    remember_me: document.querySelector('input[type="checkbox"]').checked
+})
+    });
+    var data = await res.json();
+    if (!data.ok){
+      showMsg('loginMsg','err', data.error || 'Login failed.');
+      resetSignIn();
+      return;
+    }
+
+    // where to land after the gate
+    _redirectTo = data.role === 'admin' ? 'index.html' : 'resident.html';
+
+    // Residents skip the profile gate entirely
+    if (data.role !== 'admin'){
+      go();
+      return;
+    }
+
+    // Admin gate: first login (0) = forced setup, else = confirm screen
+    if (Number(data.profile_completed) === 0){
+      await openSetup();
+    } else {
+      openConfirm(data.name, data.role, data.last_login);
+    }
+  } catch(e){
+    showMsg('loginMsg','err','Cannot reach server. Is Apache & MySQL running?');
+    resetSignIn();
+  }
+}
+function resetSignIn(){ $('signInBtn').disabled=false; $('signInBtn').textContent='Sign In →'; }
+function go(){ location.href = _redirectTo; }
+
+/* ---- Confirm modal (returning admin) ---- */
+function openConfirm(name, role, lastLogin){
+  $('cf_name').textContent  = name || '—';
+  $('cf_role').textContent  = role === 'admin' ? 'Administrator' : (role || '—');
+  $('cf_last').textContent  = lastLogin
+      ? new Date(String(lastLogin).replace(' ','T')).toLocaleString()
+      : 'First login';
+  // email comes from get_profile so the confirm card is fully populated
+  fetchProfile().then(function(p){
+    $('cf_email').textContent = p && p.email ? p.email : '—';
+  });
+  $('confirmOverlay').classList.add('open');
+}
+$('cfConfirmBtn').addEventListener('click', go);
+$('cfEditBtn').addEventListener('click', function(){
+  $('confirmOverlay').classList.remove('open');
+  openSetup();
+});
+
+/* ---- Setup modal (first login or "Edit") ---- */
+async function fetchProfile(){
+  try {
+    var res = await fetch(PROFILE + '?action=get_profile', {credentials:'include'});
+    var data = await res.json();
+    return data.ok ? data.profile : null;
+  } catch(e){ return null; }
+}
+async function openSetup(){
+  var p = await fetchProfile();
+  if (p){
+    $('pf_name').value  = p.full_name || '';
+    $('pf_email').value = p.email     || '';
+    $('pf_phone').value = p.phone     || '';
+    $('pf_addr').value  = p.address   || '';
+    $('pf_role').value  = p.role === 'admin' ? 'Administrator' : (p.role || '');
+  }
+  $('confirmOverlay').classList.remove('open');
+  $('setupOverlay').classList.add('open');
+  resetSignIn();
+}
+$('pfSaveBtn').addEventListener('click', async function(){
+  clearMsg('setupMsg');
+  var name  = $('pf_name').value.trim();
+  var email = $('pf_email').value.trim();
+  if (!name || !email){ showMsg('setupMsg','err','Name and email are required.'); return; }
+  $('pfSaveBtn').disabled = true; $('pfSaveBtn').textContent = 'Saving…';
+  try {
+    var res = await fetch(PROFILE + '?action=update_profile', {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+      body: JSON.stringify({
+        action:'update_profile',
+        full_name:name, email:email,
+        phone:$('pf_phone').value.trim(),
+        address:$('pf_addr').value.trim(),
+        password:$('pf_pw').value || ''
+      })
+    });
+    var data = await res.json();
+    if (!data.ok){
+      showMsg('setupMsg','err', data.error || 'Could not save.');
+      $('pfSaveBtn').disabled=false; $('pfSaveBtn').textContent='Save & continue →';
+      return;
+    }
+    go();   // profile_completed is now 1 server-side
+  } catch(e){
+    showMsg('setupMsg','err','Cannot reach server.');
+    $('pfSaveBtn').disabled=false; $('pfSaveBtn').textContent='Save & continue →';
+  }
+});
+
+$('signInBtn').addEventListener('click', doLogin);
+$('loginPw').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+
+/* ════════ SIGNUP (unchanged) ════════ */
+var barangaysLoaded = false;
+async function loadBarangays(){
+  if (barangaysLoaded) return;
+  try {
+    var res = await fetch(AUTH + '?action=barangays');
+    var data = await res.json();
+    if (data.ok){
+      var sel = $('su_brgy');
+      data.barangays.forEach(function(b){
+        var o=document.createElement('option'); o.value=b.id; o.textContent=b.name; sel.appendChild(o);
+      });
+      barangaysLoaded = true;
+    }
+  } catch(e){ showMsg('signupMsg','err','Could not load barangay list.'); }
+}
+async function doSignup(){
+  clearMsg('signupMsg');
+  var name=$('su_name').value.trim(), email=$('su_email').value.trim(),
+      brgy=$('su_brgy').value, pw=$('su_pw').value, pw2=$('su_pw2').value,
+      phone=$('su_phone').value.trim(), addr=$('su_addr').value.trim();
+  if (!name||!email||!brgy){ showMsg('signupMsg','err','Fill in name, email, and barangay.'); return; }
+  if (pw.length<6){ showMsg('signupMsg','err','Password must be at least 6 characters.'); return; }
+  if (pw!==pw2){ showMsg('signupMsg','err','Passwords do not match.'); return; }
+  $('signUpBtn').disabled=true; $('signUpBtn').textContent='Creating account…';
+  try {
+    var res = await fetch(AUTH+'?action=signup',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({full_name:name,email:email,barangay_id:brgy,password:pw,phone:phone,address:addr})
+    });
+    var data = await res.json();
+    if (data.ok){
+      showMsg('signupMsg','ok','Account created! Redirecting to sign in…');
+      var e2=email;
+      setTimeout(function(){ $('toLogin').click(); $('loginId').value=e2;
+        $('signUpBtn').disabled=false; $('signUpBtn').textContent='Create Account →'; },1300);
+    } else {
+      showMsg('signupMsg','err', data.error||'Sign up failed.');
+      $('signUpBtn').disabled=false; $('signUpBtn').textContent='Create Account →';
+    }
+  } catch(e){
+    showMsg('signupMsg','err','Cannot reach server.');
+    $('signUpBtn').disabled=false; $('signUpBtn').textContent='Create Account →';
+  }
+}
+$('signUpBtn').addEventListener('click', doSignup);
+</script>
+</body>
+</html>

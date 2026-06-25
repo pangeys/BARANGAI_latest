@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BarangAI – Barangay Intelligent Case Tracking System</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="mobile-responsive.css">   <!-- ADD THIS LINE -->
+</head>
+<body>
+
+
+
+<!-- MAIN SHELL -->
+<div id="shell" style="display:none;">
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="sidebar-brand">
+      <div class="logo">Barang<span>AI</span></div>
+      <div class="sub">Barangay Intelligent Case Tracking System</div>
+    </div>
+    <div id="sidebar-user">
+      <div class="user-ava">BAI</div>
+      <div>
+        <div class="user-name">Nicole | Airon | Darrel</div>
+        <div class="user-role">CS - 3IS2</div>
+      </div>
+    </div>
+    <div class="nav-section">Main</div>
+    <div class="nav-item active"       onclick="showScreen('dashboard',this)"><span class="nav-icon">▦</span> Dashboard</div>
+    <div class="nav-item"              onclick="showScreen('complaints',this)"><span class="nav-icon">📋</span> Complaints</div>
+    <div class="nav-item"              onclick="showScreen('priority',this)"><span class="nav-icon">⚡</span> Priority Queue</div>
+    <div class="nav-item"              onclick="showScreen('cases',this)"><span class="nav-icon">📁</span> Case Tracking</div>
+    <div class="nav-item"              onclick="showScreen('ai',this)"><span class="nav-icon">🤖</span> AI Results</div>
+    <div class="nav-section">Admin</div>
+    <div class="nav-item"              onclick="showScreen('reports',this)"><span class="nav-icon">📈</span> Reports</div>
+    <div class="nav-item"              onclick="showScreen('users',this)"><span class="nav-icon">👥</span> Users</div>
+    <div class="nav-item"              onclick="showScreen('notifs',this)"><span class="nav-icon">🔔</span> Notifications</div>
+    <div class="nav-item"              onclick="showScreen('officers',this)"><span class="nav-icon">👮</span> Officers</div>
+    <div id="sidebar-footer">
+      <div class="logout-btn" onclick="doLogout()">⬅ Sign Out</div>
+    </div>
+  </div>
+
+  <!-- MAIN AREA -->
+  <div id="main">
+    <div id="topbar">
+      <div id="topbar-title">Dashboard</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+        <button class="btn btn-primary btn-sm" onclick="showModal('submitModal')">+ Submit Complaint</button>
+        <div class="topbar-action" onclick="showScreen('notifs',null)" style="position:relative;">🔔<span id="notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--red,#dc2626);color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;">0</span></div>
+        <div class="topbar-action" onclick="openMyAccount()" title="My account">👤</div>
+      </div>
+    </div>
+
+    <div id="content">
+
+<!-- ═══════════════════════════════════════════════════
+     DASHBOARD
+═══════════════════════════════════════════════════ -->
+<div id="screen-dashboard" class="screen active">
+  <div class="page-header">
+    <div class="page-title">Dashboard</div>
+    <div class="page-sub">Welcome back, Administrator. Here's today's overview.</div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Complaints</div>
+      <div class="stat-value" id="stat-total">0</div>
+      <div class="stat-delta">No complaints yet</div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-label">Pending</div>
+      <div class="stat-value" id="stat-pending" style="color:var(--amber)">0</div>
+      <div class="stat-delta neg">Awaiting action</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Resolved</div>
+      <div class="stat-value" id="stat-resolved" style="color:var(--green)">0</div>
+      <div class="stat-delta">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg. Response</div>
+      <div class="stat-value" id="stat-response">—</div>
+      <div class="stat-delta">No data yet</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+    <div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Recent Complaints</div>
+          <button class="btn btn-ghost btn-sm" onclick="showScreen('complaints',null)">View All →</button>
+        </div>
+        <div class="card-body" id="dashboard-recent">
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <div class="empty-title">No complaints yet</div>
+            <div class="empty-desc">Submitted complaints will appear here.</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Classification Accuracy — Best Configuration (100% training data)</div>
+        </div>
+        <div class="card-body">
+          <div id="accuracy-bars"></div>
+          <div class="alert alert-info" style="margin-bottom:0;">🤖 <strong>Active model: SVM</strong> — best F1-score (81.50%) on the locked test set. Trained on 2,152 real barangay complaint records across 6 KP categories.</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">By Category</div></div>
+        <div class="card-body">
+          <div class="donut-wrap">
+            <div class="donut" id="dashboard-donut"></div>
+            <div class="legend" id="dashboard-legend"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Critical Cases</div></div>
+        <div class="card-body" style="padding:12px;" id="critical-cases"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     COMPLAINTS
+═══════════════════════════════════════════════════ -->
+<div id="screen-complaints" class="screen">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div class="page-header" style="margin:0;">
+      <div class="page-title">All Complaints</div>
+      <div class="page-sub">0 total records</div>
+    </div>
+    <button class="btn btn-primary" onclick="showModal('submitModal')">+ Submit Complaint</button>
+  </div>
+  <div class="search-bar">
+    <span style="color:var(--text3);font-size:13px;">🔍</span>
+    <input placeholder="Search by ID, keyword, or description…" id="complaint-search" oninput="filterComplaints()">
+  </div>
+  <div class="filter-row">
+    <span style="font-size:11px;color:var(--text3);">Status:</span>
+    <div class="chip active" onclick="filterByStatus('All',this)">All</div>
+    <div class="chip" onclick="filterByStatus('Open',this)">Open</div>
+    <div class="chip" onclick="filterByStatus('In Progress',this)">In Progress</div>
+    <div class="chip" onclick="filterByStatus('Resolved',this)">Resolved</div>
+    <div class="chip" onclick="filterByStatus('Closed',this)">Closed</div>
+    <div style="margin-left:auto;display:flex;gap:8px;">
+      <select class="inp sel" id="cat-filter" style="font-size:11px;padding:5px 28px 5px 10px;height:30px;" onchange="filterComplaints()">
+        <option value="">Category: All</option>
+        <option>Threat &amp; Violence</option>
+        <option>Financial &amp; Fraud</option>
+        <option>Money/Debt Disputes</option>
+        <option>Property Disputes</option>
+        <option>Neighbor Disputes</option>
+        <option>Contract Disputes</option>
+        <option>Accident &amp; Traffic</option>
+        <option>Environmental &amp; Infrastructure</option>
+      </select>
+      <select class="inp sel" id="pri-filter" style="font-size:11px;padding:5px 28px 5px 10px;height:30px;" onchange="filterComplaints()">
+        <option value="">Priority: All</option>
+        <option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body np">
+      <table class="tbl">
+        <thead>
+          <tr><th>ID</th><th>Date</th><th>Description</th><th>Category</th><th>Priority Score</th><th>Officer</th><th>Status</th><th></th><th></th></tr>
+        </thead>
+        <tbody id="complaints-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     COMPLAINT DETAIL
+═══════════════════════════════════════════════════ -->
+<div id="screen-complaint-detail" class="screen">
+  <div class="breadcrumb">Complaints / <b id="detail-breadcrumb">—</b></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+    <div>
+      <div class="page-title" id="detail-page-title">—</div>
+      <div style="display:flex;gap:6px;margin-top:6px;" id="detail-badge-row">
+        <span class="badge b-blue">—</span>
+        <span class="badge b-gray">—</span>
+        <span class="badge b-gray">—</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary btn-sm" onclick="showScreen('complaints',null)">← Back</button>
+      <!-- CHANGED: now calls openAssignModal() with the current complaint ID -->
+      <button class="btn btn-primary btn-sm" onclick="openAssignModal(_currentDetailComplaintId)">Assign Officer</button>
+      <button class="btn btn-secondary btn-sm" id="detail-resolve-btn" style="color:var(--green);border-color:var(--green);">✓ Resolve</button>
+      <button class="btn btn-secondary btn-sm" id="detail-close-btn" style="color:var(--text3);">⊘ Close Case</button>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+    <div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Complaint Details</div></div>
+        <div class="card-body">
+          <div class="detail-grid" style="margin-bottom:16px;">
+            <div class="detail-item"><div class="dl">Date Filed</div><div class="dv" id="detail-date-filed">—</div></div>
+            <div class="detail-item"><div class="dl">Incident Date &amp; Time</div><div class="dv" id="detail-incident-date">—</div></div>
+            <div class="detail-item"><div class="dl">Location</div><div class="dv" id="detail-location">—</div></div>
+            <div class="detail-item"><div class="dl">Affected Persons</div><div class="dv" id="detail-affected">—</div></div>
+            <div class="detail-item"><div class="dl">Complainant</div><div class="dv" id="detail-complainant">Anonymous</div></div>
+            <div class="detail-item"><div class="dl">Assigned Officer</div><div class="dv" id="detail-officer">—</div></div>
+          </div>
+          <hr class="divider">
+          <div class="dl" style="margin-bottom:8px;">Description</div>
+          <div id="detail-description" style="font-size:13px;color:var(--text);line-height:1.7;background:var(--bg);padding:13px;border-radius:var(--r);">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">🤖 NLP Classification Result</div></div>
+        <div class="card-body">
+          <div class="nlp-box">
+            <div class="nlp-label">SVM Model — Category Scores</div>
+            <div id="nlp-conf-bars"></div>
+          </div>
+          <div style="margin-top:12px;font-size:11px;color:var(--text3);">
+            Predicted: <strong style="color:var(--blue)" id="nlp-predicted-label">—</strong>
+            · TF-IDF (1,2)-gram feature extraction · sublinear_tf=True
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Case Notes</div>
+          <button class="btn btn-ghost btn-sm" onclick="showNoteForm()">+ Add Note</button>
+        </div>
+        <div class="card-body" id="case-notes"></div>
+        <div id="note-form" style="display:none; padding: 0 16px 16px;">
+          <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+            <textarea
+              class="inp ta"
+              id="note-content"
+              placeholder="Type your note here…"
+              style="min-height: 80px; margin-bottom: 8px;"
+            ></textarea>
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+              <button class="btn btn-secondary btn-sm" onclick="hideNoteForm()">Cancel</button>
+              <button class="btn btn-primary btn-sm" id="note-submit-btn" onclick="submitNote()">Save Note</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Case Timeline</div></div>
+        <div class="card-body" id="detail-timeline">
+          <div class="empty-state" style="padding:24px 0;">
+            <div class="empty-icon">📅</div>
+            <div class="empty-title">No activity yet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     PRIORITY QUEUE
+═══════════════════════════════════════════════════ -->
+<div id="screen-priority" class="screen">
+  <div class="page-header">
+    <div class="page-title">Priority Queue</div>
+    <div class="page-sub">Complaints ranked by Fuzzy AHP score — Severity (46.6%) · Urgency (27.7%) · Affected Individuals (16.1%) · Frequency (9.6%)</div>
+  </div>
+  <div class="card">
+    <div class="card-body np">
+      <table class="tbl">
+        <thead>
+          <tr><th>Rank</th><th>ID</th><th>Category</th><th>Priority Score</th><th>Severity</th><th>Urgency</th><th>Frequency</th><th>Affected</th><th>Officer</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody id="priority-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     CASE TRACKING KANBAN
+═══════════════════════════════════════════════════ -->
+<div id="screen-cases" class="screen">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div class="page-header" style="margin:0;">
+      <div class="page-title">Case Board</div>
+      <div class="page-sub">Live case management — move or resolve complaints directly from here</div>
+    </div>
+  </div>
+  <div class="kanban" id="kanban-board"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     AI RESULTS
+═══════════════════════════════════════════════════ -->
+<div id="screen-ai" class="screen">
+  <div class="page-header">
+    <div class="page-title">AI Classification Results</div>
+    <div class="page-sub">NLP model performance · 2,152 real complaint records · 6 KP categories (RA 7160) · 80/20 stratified split · locked test set (431 samples)</div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card green">
+      <div class="stat-label">SVM Accuracy (100%)</div>
+      <div class="stat-value" style="color:var(--green)">81.67%</div>
+      <div class="stat-delta">Best performing model ★</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">SVM F1-Score (100%)</div>
+      <div class="stat-value">81.50%</div>
+      <div class="stat-delta">Weighted F1 · 198 locked test samples</div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-label">Naive Bayes (100%)</div>
+      <div class="stat-value" style="color:var(--amber)">61.62%</div>
+      <div class="stat-delta">Baseline · fastest inference</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">BiLSTM (100%)</div>
+      <div class="stat-value">57.07%</div>
+      <div class="stat-delta">Limited by short text length</div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header">
+      <div class="card-title">F1-Score by Training Data Size (25%–100%) — All Three Models</div>
+      <span class="badge b-green" style="font-size:10px;">Locked test set · no data leakage</span>
+    </div>
+    <div class="card-body np">
+      <table class="tbl" id="dataset-version-tbl">
+        <thead>
+          <tr>
+            <th>Dataset</th>
+            <th>Train Samples</th>
+            <th>Naive Bayes F1</th>
+            <th>SVM F1</th>
+            <th>BiLSTM F1</th>
+            <th>Best Model</th>
+          </tr>
+        </thead>
+        <tbody id="dataset-version-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Model Comparison — 100% Training Data · Best Overall</div>
+      </div>
+      <div class="card-body np">
+        <table class="tbl">
+          <thead>
+            <tr><th>Metric</th><th>Naive Bayes</th><th style="background:var(--sky-light);color:var(--blue)">SVM ★</th><th>BiLSTM</th></tr>
+          </thead>
+          <tbody id="model-comparison-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Per-Category Report — SVM · Locked Test Set</div></div>
+      <div class="card-body np">
+        <table class="tbl">
+          <thead><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead>
+          <tbody id="f1-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">NLP Preprocessing &amp; Augmentation Pipeline</div></div>
+    <div class="card-body">
+      <div id="nlp-pipeline" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
+      <hr class="divider" style="margin:12px 0;">
+      <div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:6px;">Data Augmentation</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;" id="aug-tags"></div>
+      <div style="font-size:11px;color:var(--text3);">
+        Filipino/Taglish stop words removed:
+        <span class="tag">ang</span><span class="tag">ng</span><span class="tag">sa</span><span class="tag">na</span><span class="tag">at</span><span class="tag">mga</span><span class="tag">ito</span><span class="tag">ay</span><span class="tag">si</span><span class="tag">ni</span><span class="tag">ko</span><span class="tag">mo</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     REPORTS
+═══════════════════════════════════════════════════ -->
+<div id="screen-reports" class="screen">
+  <div class="page-header">
+    <div class="page-title">Reports</div>
+    <div class="page-sub">Generate and export system performance reports</div>
+  </div>
+  <div class="g2">
+    <div id="report-list"></div>
+    <div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Daily Complaint Volume (Last 7 Days)</div></div>
+        <div class="card-body">
+          <div class="bars" style="height:120px;" id="weekly-bars"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- USERS -->
+<div id="screen-users" class="screen">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div class="page-header" style="margin:0;"><div class="page-title">User Management</div></div>
+    <button class="btn btn-primary" onclick="openAddUser()">+ Add User</button>
+  </div>
+  <div class="tabs" id="users-tabs" style="margin-bottom:14px;">
+    <div class="tab active" onclick="switchUsersTab('users',this)">Users &amp; Roles</div>
+    <div class="tab"        onclick="switchUsersTab('audit',this)">Activity Log</div>
+    <div class="tab"        onclick="switchUsersTab('stats',this)">Admin Stats</div>
+  </div>
+  <div id="users-panel">
+    <div class="card"><div class="card-body np">
+      <table class="tbl">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+    </div></div>
+  </div>
+  <div id="audit-panel" style="display:none;">
+    <div class="card"><div class="card-body np">
+      <table class="tbl">
+        <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead>
+        <tbody id="audit-tbody"></tbody>
+      </table>
+    </div></div>
+  </div>
+  <div id="stats-panel" style="display:none;">
+    <div class="card"><div class="card-body np">
+      <table class="tbl">
+        <thead><tr><th>Admin</th><th style="text-align:center">Resolved</th><th style="text-align:center">Closed</th><th style="text-align:center">Total Handled</th><th>Categories Processed</th></tr></thead>
+        <tbody id="stats-tbody"></tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+
+<!-- NOTIFICATIONS -->
+<div id="screen-notifs" class="screen">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div class="page-header" style="margin:0;"><div class="page-title">Notifications</div></div>
+    <button class="btn btn-ghost btn-sm" onclick="markAllNotifsRead()">Mark all as read</button>
+  </div>
+  <div class="card">
+    <div class="card-body" id="notifs-list"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SETTINGS  ← UPDATED: added Officers tab + panel
+═══════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════
+     SETTINGS  — replace the existing <div id="screen-settings"> block
+     Officers tab panel is UNTOUCHED (copied as-is from original)
+═══════════════════════════════════════════════════ -->
+<div id="screen-officers" class="screen">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+    <div>
+      <div class="page-title">Officer Management</div>
+      <div class="page-sub">Manage officers who can be assigned to handle barangay complaints</div>
+    </div>
+    <button class="btn btn-primary" onclick="openAddOfficer()">+ Add Officer</button>
+  </div>
+  <div style="display:flex;gap:12px;margin-bottom:16px;">
+    <div class="stat-card" style="flex:1;padding:14px 16px;">
+      <div class="stat-label">Total Officers</div>
+      <div class="stat-value" id="officer-stat-total" style="font-size:22px;">0</div>
+    </div>
+    <div class="stat-card green" style="flex:1;padding:14px 16px;">
+      <div class="stat-label">Active</div>
+      <div class="stat-value" id="officer-stat-active" style="font-size:22px;color:var(--green);">0</div>
+    </div>
+    <div class="stat-card amber" style="flex:1;padding:14px 16px;">
+      <div class="stat-label">Inactive</div>
+      <div class="stat-value" id="officer-stat-inactive" style="font-size:22px;color:var(--amber);">0</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body np">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Rank / Position</th>
+            <th>Contact</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th style="width:160px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="officers-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- ═══════════════════════════════════════════════════
+     SUBMIT COMPLAINT MODAL
+═══════════════════════════════════════════════════ -->
+<div id="submitModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Submit New Complaint</div>
+      <div class="modal-close" onclick="closeModal('submitModal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="wizard-steps">
+        <div class="wizard-step">
+          <div class="wizard-step-n cur" id="ws-n-1">1</div>
+          <div class="wizard-step-label cur" id="ws-l-1">Basic Info</div>
+        </div>
+        <div class="wizard-step-line"></div>
+        <div class="wizard-step">
+          <div class="wizard-step-n todo" id="ws-n-2">2</div>
+          <div class="wizard-step-label todo" id="ws-l-2">Details</div>
+        </div>
+        <div class="wizard-step-line"></div>
+        <div class="wizard-step">
+          <div class="wizard-step-n todo" id="ws-n-3">3</div>
+          <div class="wizard-step-label todo" id="ws-l-3">AI Result</div>
+        </div>
+        <div class="wizard-step-line"></div>
+        <div class="wizard-step">
+          <div class="wizard-step-n todo" id="ws-n-4">4</div>
+          <div class="wizard-step-label todo" id="ws-l-4">Confirm</div>
+        </div>
+      </div>
+
+      <!-- Step 1 -->
+      <div class="wizard-panel active" id="wp-1">
+        <div class="form-row">
+          <div class="field">
+            <div class="label">Date of Incident <span>*</span></div>
+            <input class="inp" id="w-date" type="date">
+          </div>
+          <div class="field">
+            <div class="label">Time of Incident</div>
+            <input class="inp" id="w-time" type="time">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="field">
+            <div class="label">Location / Address <span>*</span></div>
+            <input class="inp" id="w-location" placeholder="e.g. Near Purok 3, beside basketball court">
+          </div>
+        </div>
+        <div class="form-row full" style="margin-bottom:0;">
+          <div class="field">
+            <div class="label">Complaint Description <span>*</span></div>
+            <textarea class="inp ta" id="w-description" placeholder="Describe what happened. The SVM classifier will automatically categorize this into one of 6 categories: Neighbor Disputes, Money/Debt Disputes, Family Matters, Petty Criminal Offenses, Property Disputes, or Contract Disputes."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="wizard-panel" id="wp-2">
+        <div class="form-row">
+          <div class="field">
+            <div class="label">Complainant Name</div>
+            <input class="inp" id="w-complainant" placeholder="Leave blank to file anonymously">
+          </div>
+          <div class="field">
+            <div class="label">No. of Affected Individuals</div>
+            <input class="inp" id="w-affected" type="number" min="1" placeholder="e.g. 5">
+          </div>
+        </div>
+        <div class="alert alert-info">🔒 <strong>Privacy notice:</strong> Complainant identity is confidential and will only be disclosed with consent. Anonymous filing is allowed.</div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="wizard-panel" id="wp-3">
+        <div class="ai-result-box">
+          <div class="ai-result-icon">🤖</div>
+          <div class="ai-result-category" id="ai-cat">Classifying…</div>
+          <div class="ai-result-conf" id="ai-conf">Processing with SVM model</div>
+        </div>
+        <div class="nlp-box">
+          <div class="nlp-label">Category Confidence Scores</div>
+          <div id="ai-conf-bars">
+            <div style="text-align:center;padding:12px;font-size:12px;color:var(--text3);">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="wizard-panel" id="wp-4">
+        <div class="alert alert-info" style="margin-bottom:14px;">📋 Please review the complaint details before submitting.</div>
+        <div id="confirm-rows"></div>
+      </div>
+
+      <!-- Step 5: Success -->
+      <div class="wizard-panel" id="wp-success">
+        <div class="success-panel">
+          <div class="success-icon">✓</div>
+          <div class="success-title">Complaint Submitted!</div>
+          <div class="success-sub">Your complaint has been recorded and classified by the SVM model.<br>It has been added to the priority queue for officer assignment.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer" id="wizard-footer">
+      <button class="btn btn-secondary" id="wizard-back"   onclick="wizardBack()"             style="display:none;">← Back</button>
+      <button class="btn btn-secondary" id="wizard-cancel" onclick="closeModal('submitModal')">Cancel</button>
+      <button class="btn btn-primary"   id="wizard-next"   onclick="wizardNext()">Next →</button>
+      <button class="btn btn-primary"   id="wizard-submit" onclick="wizardSubmit()"            style="display:none;">✓ Submit Complaint</button>
+      <button class="btn btn-primary"   id="wizard-done"   onclick="closeModal('submitModal')" style="display:none;">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     ASSIGN OFFICER MODAL  ← UPDATED: dynamic, DB-backed
+═══════════════════════════════════════════════════ -->
+<div id="assignModal" class="modal-overlay">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header">
+      <div class="modal-title">Assign Officer</div>
+      <div class="modal-close" onclick="closeModal('assignModal')">✕</div>
+    </div>
+    <div class="modal-body">
+
+      <!-- Error / info message -->
+      <div id="assign-msg" style="font-size:12px;min-height:16px;margin-bottom:6px;"></div>
+
+      <!-- Complaint context badges (filled dynamically) -->
+      <div id="assign-complaint-ctx" style="margin-bottom:14px;display:flex;gap:6px;flex-wrap:wrap;min-height:22px;"></div>
+
+      <!-- Officer dropdown — populated dynamically by openAssignModal() -->
+      <div class="field" style="margin-bottom:14px;">
+        <div class="label">Select Officer <span>*</span></div>
+        <select class="inp sel" id="assign-officer-select">
+          <option value="">-- Select Officer --</option>
+        </select>
+      </div>
+
+      <!-- Optional target date -->
+      <div class="field" style="margin-bottom:14px;">
+        <div class="label">Target Resolution Date</div>
+        <input class="inp" id="assign-target-date" type="date">
+      </div>
+
+      <div class="alert alert-info" style="font-size:11px;margin-bottom:0;">
+        💡 Only <strong>Active</strong> officers are listed. Manage officers under
+        <a href="#"
+           onclick="closeModal('assignModal');showScreen('settings',document.querySelector('.nav-item[onclick*=settings]'));switchSettingsTab('officers',null);"
+           style="color:var(--blue);font-weight:600;text-decoration:none;">
+          Settings → Officers
+        </a>.
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('assignModal')">Cancel</button>
+      <button class="btn btn-primary" id="assign-submit-btn" onclick="submitAssignOfficer()">Assign Officer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     OFFICER ADD / EDIT MODAL  ← NEW
+═══════════════════════════════════════════════════ -->
+<div id="officerModal" class="modal-overlay">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header">
+      <div class="modal-title" id="officer-modal-title">Add Officer</div>
+      <div class="modal-close" onclick="closeModal('officerModal')">✕</div>
+    </div>
+    <div class="modal-body">
+
+      <!-- Validation message -->
+      <div id="om-msg" style="font-size:12px;color:var(--red,#dc2626);margin-bottom:8px;min-height:16px;"></div>
+
+      <!-- Full name -->
+      <div class="form-row full">
+        <div class="field">
+          <div class="label">Full Name <span>*</span></div>
+          <input class="inp" id="om-name" placeholder="e.g. Juan Dela Cruz">
+        </div>
+      </div>
+
+      <!-- Rank + Contact -->
+      <div class="form-row">
+        <div class="field">
+          <div class="label">Rank / Position</div>
+          <input class="inp" id="om-rank" placeholder="e.g. Tanod Chief">
+        </div>
+        <div class="field">
+          <div class="label">Contact Number</div>
+          <input class="inp" id="om-contact" type="tel" placeholder="e.g. 09XXXXXXXXX">
+        </div>
+      </div>
+
+      <!-- Email + Status -->
+      <div class="form-row">
+        <div class="field">
+          <div class="label">Email Address</div>
+          <input class="inp" id="om-email" type="email" placeholder="optional">
+        </div>
+        <div class="field">
+          <div class="label">Status</div>
+          <select class="inp sel" id="om-status">
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('officerModal')">Cancel</button>
+      <button class="btn btn-primary" id="om-submit-btn" onclick="submitOfficer()">Save Officer</button>
+    </div>
+  </div>
+</div>
+
+ <!-- CLOSE CASE -->
+<div id="closeModal" class="modal-overlay">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--text2)">⊘ Close Case</div>
+      <div class="modal-close" onclick="closeModal('closeModal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info" style="margin-bottom:14px;">
+        Closing marks a case finished <strong>without</strong> resolving it — e.g. withdrawn, referred, or no action needed.
+      </div>
+      <div class="field">
+        <div class="label">Reason for closing <span>*</span></div>
+        <select class="inp sel" id="close-reason">
+          <option>Withdrawn by complainant</option>
+          <option>Referred to another office</option>
+          <option>Duplicate complaint</option>
+          <option>No further action needed</option>
+          <option>Insufficient information</option>
+          <option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('closeModal')">Cancel</button>
+      <button class="btn" style="background:var(--text2,#444);color:#fff;" onclick="submitCloseCase()">⊘ Confirm Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESOLVE -->
+<div id="resolveModal" class="modal-overlay">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--green)">✓ Resolve Complaint</div>
+      <div class="modal-close" onclick="closeModal('resolveModal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="field" style="margin-bottom:14px;">
+        <div class="label">Resolution / Action Taken <span>*</span></div>
+        <textarea class="inp ta" placeholder="Describe the resolution or action taken…"></textarea>
+      </div>
+      <div class="field">
+        <div class="label">Resolution Date</div>
+        <input class="inp" type="date">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('resolveModal')">Cancel</button>
+      <button class="btn" style="background:var(--green);color:#fff;">✓ Mark as Resolved</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD USER MODAL -->
+<div id="addUserModal" class="modal-overlay">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header">
+      <div class="modal-title">Add User</div>
+      <div class="modal-close" onclick="closeAddUser()">✕</div>
+    </div>
+    <div class="modal-body">
+      <div id="au_msg" style="font-size:12px;margin-bottom:8px;"></div>
+      <div class="form-row">
+        <div class="field"><div class="label">Full name <span>*</span></div><input class="inp" id="au_name"></div>
+        <div class="field"><div class="label">Username <span>*</span></div><input class="inp" id="au_username"></div>
+      </div>
+      <div class="form-row full"><div class="field"><div class="label">Email <span>*</span></div><input class="inp" id="au_email" type="email"></div></div>
+      <div class="form-row">
+        <div class="field"><div class="label">Role</div>
+          <select class="inp sel" id="au_role"><option value="staff">Resident</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select>
+        </div>
+        <div class="field"><div class="label">Password <span>*</span></div><input class="inp" id="au_pw" type="password" placeholder="Min 6 chars"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAddUser()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddUser()">Create User</button>
+    </div>
+  </div>
+</div>
+
+<!-- MY ACCOUNT MODAL -->
+<div id="myAccountModal" class="modal-overlay">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header">
+      <div class="modal-title">My Account</div>
+      <div class="modal-close" onclick="closeMyAccount()">✕</div>
+    </div>
+    <div class="modal-body">
+      <div id="ma_msg" style="font-size:12px;margin-bottom:8px;"></div>
+      <div class="form-row full"><div class="field"><div class="label">Full name <span>*</span></div><input class="inp" id="ma_name"></div></div>
+      <div class="form-row">
+        <div class="field"><div class="label">Email <span>*</span></div><input class="inp" id="ma_email" type="email"></div>
+        <div class="field"><div class="label">Phone</div><input class="inp" id="ma_phone"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><div class="label">Position / Office</div><input class="inp" id="ma_addr" placeholder="e.g. Barangay Secretary"></div>
+        <div class="field"><div class="label">Role (read only)</div><input class="inp filled" id="ma_role" disabled></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><div class="label">New password (optional)</div><input class="inp" id="ma_pw" type="password" placeholder="Leave blank to keep"></div>
+        <div class="field"><div class="label">Current password <span>*</span></div><input class="inp" id="ma_curpw" type="password" placeholder="Required to save"></div>
+      </div>
+      <div style="display:flex;gap:16px;font-size:11px;color:var(--text3);margin-top:4px;">
+        <span>Last login: <b id="ma_last">—</b></span>
+        <span id="ma_count">—</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeMyAccount()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMyAccount()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Load order matters: data → classifier → dataset → render → app -->
+<script src="js/data.js"></script>
+<script src="js/classifier.js"></script>
+<script src="js/dataset.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+<script src="js/mobile.js"></script>
+
+<script>
+(async function(){
+  let user = null;
+  try {
+    const r = await fetch('api/auth.php?action=me');
+    const d = await r.json();
+    user = d.ok ? d.user : null;
+  } catch(e) {}
+
+  if (!user) { location.href = 'login.html'; return; }
+  window.CURRENT_USER = user;
+
+  document.getElementById('shell').style.display = '';
+
+  // show name in sidebar
+  const nameEl = document.querySelector('#sidebar-user .user-name');
+  const roleEl = document.querySelector('#sidebar-user .user-role');
+  if (nameEl) nameEl.textContent = user.name;
+  if (roleEl) roleEl.textContent = user.role === 'admin' ? 'Barangay Admin' : 'Resident';
+})();
+</script>
+</body>
+</html>

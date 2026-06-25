@@ -1,0 +1,606 @@
+/* ═══════════════════════════════════════════════════════
+   BICTS — mobile-responsive.css  v2 (bugfix)
+   Drop this AFTER styles.css in every HTML page.
+═══════════════════════════════════════════════════════ */
+
+/* ── GLOBAL MOBILE RESETS ── */
+* { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+html, body {
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+#content {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* ══════════════════════════════════════════════════════
+   SIDEBAR OVERLAY
+══════════════════════════════════════════════════════ */
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 25, 47, 0.6);
+  z-index: 149;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+#sidebar-overlay.visible { display: block; }
+
+/* ══════════════════════════════════════════════════════
+   HAMBURGER BUTTON
+   BUG FIX: was flex-shrink:0 but no explicit z-index,
+   causing it to accidentally capture sibling taps.
+   Give it an explicit z-index and shrink the bar-area
+   so only the button itself is clickable.
+══════════════════════════════════════════════════════ */
+#hamburger-btn {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 10px 8px;
+  position: relative;          /* FIX: contain stacking context */
+  z-index: 1;                  /* FIX: don't bleed over neighbours */
+  pointer-events: auto;        /* FIX: explicit, never inherit none */
+}
+#hamburger-btn span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text2);
+  border-radius: 2px;
+  transition: all 0.25s ease;
+  transform-origin: center;
+  pointer-events: none;        /* FIX: spans don't steal touches */
+}
+#hamburger-btn.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+#hamburger-btn.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+#hamburger-btn.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* ══════════════════════════════════════════════════════
+   TOPBAR — FIX: right-side action buttons must not be
+   intercepted by topbar-title's overflow or hamburger's
+   touch area spreading across the bar.
+══════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  #topbar {
+    padding: 0 12px;
+    height: 52px;
+    gap: 8px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    /* FIX: stop children overflowing into each other's tap zones */
+    overflow: visible;
+  }
+
+  /* FIX: title must NOT stretch and swallow sibling tap area */
+  #topbar-title {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* FIX: flex:1 was letting the title div grow over the icons */
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+    pointer-events: none;      /* title is display-only, not clickable */
+  }
+
+  /* FIX: the right-side action cluster must be a proper flex island */
+  #topbar > div:last-child {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;            /* FIX: never compress action buttons */
+    position: relative;
+    z-index: 2;                /* FIX: sit above title layer */
+  }
+
+  /* FIX: every topbar icon needs its own clear tap zone */
+  .topbar-action {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--text2);
+    position: relative;
+    z-index: 2;                /* FIX: above title, below modals */
+    flex-shrink: 0;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: rgba(30,95,168,0.1);
+    touch-action: manipulation;
+  }
+
+  #topbar .btn-primary.btn-sm {
+    padding: 5px 10px;
+    font-size: 11px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  #hamburger-btn { display: flex; }
+}
+
+/* ══════════════════════════════════════════════════════
+   TABLETS  (max 1024px)
+══════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  #sidebar { width: 200px; min-width: 200px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .g2 { grid-template-columns: 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr; }
+  #content { padding: 18px; }
+}
+
+/* ══════════════════════════════════════════════════════
+   MOBILE  (max 768px)
+══════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  body { overflow: hidden; height: 100vh; height: 100dvh; }
+  #shell { flex-direction: column; height: 100vh; height: 100dvh; }
+
+  /* ── Sidebar drawer ── */
+  #sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    height: 100%;
+    width: 260px; min-width: 260px;
+    z-index: 150;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.25);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #sidebar.open { transform: translateX(0); }
+
+  /* ── Main ── */
+  #main {
+    width: 100%;
+    height: 100vh; height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Content area ── */
+  #content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px 14px 100px;  /* FIX: extra bottom padding clears browser chrome */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Page header ── */
+  .page-header { margin-bottom: 14px; }
+  .page-title { font-size: 17px; }
+  .page-sub { font-size: 12px; }
+
+  /* ── Stats grid ── */
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stat-value { font-size: 22px; }
+  .stat-card { padding: 13px 14px; }
+
+  /* ── Cards ── */
+  .card { margin-bottom: 12px; }
+  .card-header { padding: 12px 14px; }
+  .card-body { padding: 14px; }
+  .card-title { font-size: 12px; }
+
+  /* ── Grids ── */
+  .g2 { grid-template-columns: 1fr; gap: 12px; }
+  .g3 { grid-template-columns: 1fr; gap: 12px; }
+
+  #screen-dashboard > div[style*="grid-template-columns"] {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* ── Tables ── */
+  .card-body.np { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tbl { min-width: 520px; }
+  .tbl th, .tbl td { padding: 9px 11px; font-size: 11px; }
+  #screen-priority .tbl { min-width: 680px; }
+
+  /* ── Kanban ── */
+  .kanban { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 12px; gap: 10px; }
+  .kanban-col { min-width: 180px; flex: 0 0 180px; }
+  .kanban-card { padding: 10px; }
+  .kanban-desc { font-size: 11px; }
+
+  /* ── Donut ── */
+  .donut-wrap { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .donut { width: 80px; height: 80px; }
+
+  /* ── Complaint detail ── */
+  #screen-complaint-detail > div[style*="grid-template-columns"] {
+    display: flex !important; flex-direction: column !important; gap: 12px !important;
+  }
+  .detail-grid { grid-template-columns: 1fr; gap: 10px; }
+  #screen-complaint-detail > div:nth-child(2) {
+    flex-direction: column !important; gap: 10px !important; align-items: flex-start !important;
+  }
+  #screen-complaint-detail > div:nth-child(2) > div:last-child { width: 100%; flex-wrap: wrap; }
+  #screen-complaint-detail > div:nth-child(2) > div:last-child .btn {
+    flex: 1; justify-content: center; font-size: 10px; padding: 5px 6px;
+  }
+
+  /* ── Complaints header ── */
+  #screen-complaints > div:first-child {
+    flex-direction: column !important; gap: 10px !important; align-items: flex-start !important;
+  }
+
+  /* ── Filter row ── */
+  .filter-row { flex-wrap: wrap; gap: 6px; }
+  .filter-row > div:last-child { width: 100%; display: flex !important; gap: 8px; }
+  .filter-row .inp.sel { flex: 1; font-size: 11px; }
+
+  /* ── Search ── */
+  .search-bar { padding: 7px 10px; }
+  .search-bar input { font-size: 16px; } /* FIX: 16px prevents iOS zoom */
+
+  /* ── Reports ── */
+  #screen-reports .g2 { grid-template-columns: 1fr; }
+  .bars { height: 100px; }
+
+  /* ── Users / Officers headers ── */
+  #screen-users > div:first-child,
+  #screen-officers > div:first-child {
+    flex-direction: column !important; gap: 10px !important; align-items: flex-start !important;
+  }
+  #screen-officers > div:nth-child(2) { flex-direction: row !important; }
+  #screen-officers > div:nth-child(2) .stat-card { padding: 10px 12px; }
+  #screen-officers > div:nth-child(2) .stat-value { font-size: 20px; }
+
+  /* ── AI stats ── */
+  #screen-ai .stats-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* ── Tabs ── */
+  .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; display: flex; flex-wrap: nowrap; }
+  .tab { flex-shrink: 0; padding: 9px 12px; font-size: 11px; }
+
+  /* ── Notifications ── */
+  .notif-item { gap: 10px; padding: 10px 0; }
+  .notif-ico { width: 30px; height: 30px; font-size: 13px; }
+  .notif-txt { font-size: 11px; }
+
+  /* ════════════════════════════════════════════════════
+     MODAL — BUG FIX: Submit button was cut off
+     Root cause: modal-footer had padding-bottom:20px but
+     no accounting for the browser's bottom chrome bar
+     (~83px on iOS Safari). The modal itself also had
+     max-height:92dvh which isn't enough when the
+     keyboard is up or on short devices.
+     FIX strategy:
+       1. Use 100dvh modal with internal scroll on body
+       2. Footer is sticky at the bottom with safe-area padding
+       3. Modal body scrolls independently
+  ════════════════════════════════════════════════════ */
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal {
+    max-width: 100%;
+    width: 100%;
+    height: calc(100dvh - 60px);       /* FIX: real height so body can scroll */
+    max-height: calc(100dvh - 60px);
+    max-height: calc(100vh - 60px);    /* fallback */
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Drag handle pill */
+  .modal::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    margin: 10px auto 2px;
+    flex-shrink: 0;
+  }
+
+  .modal-header {
+    padding: 12px 18px 12px;
+    flex-shrink: 0;             /* FIX: header never shrinks */
+  }
+
+  /* FIX: modal body must scroll so footer is always reachable */
+  .modal-body {
+    padding: 14px 18px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex: 1;                    /* FIX: takes remaining space */
+    min-height: 0;              /* FIX: allows flex child to shrink */
+  }
+
+  /* FIX: footer is sticky at the bottom, always visible */
+  .modal-footer {
+    padding: 12px 18px;
+    /* FIX: safe-area-inset-bottom for iPhone home bar */
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;             /* FIX: footer never shrinks away */
+    border-top: 1px solid var(--border);
+    background: var(--surface); /* FIX: opaque so content doesn't bleed under */
+  }
+  .modal-footer .btn { flex: 1; justify-content: center; min-height: 44px; }
+
+  /* ── Wizard ── */
+  .wizard-steps { margin-bottom: 18px; }
+  .wizard-step-label { display: none; }
+  .wizard-step-n { width: 28px; height: 28px; font-size: 11px; }
+
+  /* ── Form rows ── */
+  .form-row { grid-template-columns: 1fr; gap: 10px; margin-bottom: 10px; }
+  .form-row.three { grid-template-columns: 1fr; }
+  .confirm-row { flex-direction: column; gap: 2px; }
+  .confirm-key { min-width: unset; }
+  .confirm-val { text-align: left; }
+
+  /* ── Alerts ── */
+  .alert { font-size: 11px; padding: 9px 12px; }
+
+  /* ── Misc ── */
+  .setting-row { flex-wrap: wrap; gap: 8px; }
+  .conf-label { width: 110px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nlp-box { padding: 11px; }
+  .tl li { gap: 8px; padding-bottom: 12px; }
+  #detail-badge-row { flex-wrap: wrap; gap: 5px; }
+
+  /* ════════════════════════════════════════════════════
+     LOGIN PAGE — BUG FIX: inputs had dead tap zones
+     Root cause: .login-card used overflow:hidden from the
+     base styles and .inp had no explicit width:100%.
+     The label+input .field stack also lacked width:100%.
+     FIX: explicit full-width on all field children.
+  ════════════════════════════════════════════════════ */
+  #login-screen {
+    padding: 0;
+    align-items: flex-start;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    /* FIX: don't let decorative circles overflow and eat taps */
+    overflow: hidden auto;
+  }
+
+  .login-card {
+    width: calc(100% - 32px);
+    max-width: 420px;
+    padding: 28px 22px;
+    margin: 48px auto 40px;
+    /* FIX: no overflow:hidden — it was clipping the input tap zone */
+    overflow: visible;
+    position: relative;
+    z-index: 2;                 /* FIX: above the decorative circles */
+  }
+
+  /* FIX: the decorative circles were z-index unset (auto),
+     meaning they could stack above the card on some engines */
+  .login-deco {
+    z-index: 0 !important;
+    pointer-events: none !important;
+  }
+
+  /* FIX: every form field and its children must be full-width
+     with explicit pointer-events so no dead zones exist */
+  .login-card .field {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .login-card .inp,
+  .login-card input,
+  .login-card select,
+  .login-card textarea {
+    width: 100%;
+    min-height: 48px;           /* FIX: generous tap target */
+    font-size: 16px;            /* FIX: prevents iOS auto-zoom */
+    box-sizing: border-box;
+    padding: 12px 14px;
+    pointer-events: auto;
+    position: relative;
+    z-index: 1;
+    /* FIX: remove any inherited touch-action that blocks tap */
+    touch-action: auto;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* FIX: remember-me row and forgot-password link need tap room */
+  .login-card > div[style*="justify-content"] {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+  }
+  .login-card label {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(0,0,0,0.05);
+  }
+  .login-card label input[type="checkbox"] {
+    width: 18px;
+    min-height: 18px;
+    height: 18px;
+    cursor: pointer;
+  }
+
+  /* FIX: sign-in button full width, tall enough */
+  .login-card .btn-primary[style*="width:100%"],
+  .login-card .btn[style*="width:100%"] {
+    width: 100% !important;
+    min-height: 48px;
+    font-size: 15px;
+    justify-content: center;
+  }
+
+  /* Signup form row: stack on mobile */
+  .login-card .row2 {
+    flex-direction: column;
+    gap: 0;
+  }
+  .login-card .row2 .field { width: 100%; }
+
+  /* ── Resident portal ── */
+  .res-header { padding: 0 16px; height: 52px; }
+  .res-user-info { display: none; }
+  .res-nav { padding: 0 14px; margin-top: 14px; gap: 6px; }
+  .res-nav-btn { padding: 9px; font-size: 12px; }
+  .res-body { padding: 0 14px; margin-top: 14px; margin-bottom: 60px; }
+  .frow { flex-direction: column; gap: 0; }
+  .res-welcome-title { font-size: 18px; }
+  .rc-card { padding: 13px 14px; }
+  .rc-top { gap: 7px; }
+  .rc-steps { overflow-x: auto; }
+  .res-success { padding: 36px 16px; }
+  .res-success-icon { font-size: 48px; }
+  .res-success-title { font-size: 19px; }
+
+  /* FIX: resident portal inputs also need 16px + full width */
+  .res-body .inp,
+  .res-body input,
+  .res-body select,
+  .res-body textarea {
+    font-size: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 46px;
+    touch-action: auto;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .res-body .inp.ta { min-height: 120px; }
+}
+
+/* ══════════════════════════════════════════════════════
+   SMALL PHONES (max 400px)
+══════════════════════════════════════════════════════ */
+@media (max-width: 400px) {
+  #topbar-title { font-size: 13px; }
+  .stats-grid { gap: 8px; }
+  .stat-value { font-size: 20px; }
+  .stat-label { font-size: 9px; }
+  .btn-sm { padding: 4px 8px; font-size: 10px; }
+  #content { padding: 12px 12px 100px; }
+  .card-body { padding: 12px; }
+  .page-title { font-size: 16px; }
+  #screen-officers > div:nth-child(2) .stat-value { font-size: 18px; }
+  #screen-officers > div:nth-child(2) .stat-label { font-size: 9px; }
+  .login-card { padding: 24px 18px; }
+}
+
+/* ══════════════════════════════════════════════════════
+   FLOATING ACTION BUTTON
+══════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  #mobile-fab {
+    display: flex;
+    position: fixed;
+    /* FIX: sit above browser nav bar with safe-area padding */
+    bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 20px));
+    right: 18px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--blue);
+    color: #fff;
+    font-size: 26px;
+    font-weight: 300;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(30, 95, 168, 0.4);
+    cursor: pointer;
+    z-index: 90;
+    border: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    line-height: 1;
+    padding-bottom: 2px;
+  }
+  #mobile-fab:active { transform: scale(0.93); box-shadow: 0 2px 8px rgba(30, 95, 168, 0.3); }
+}
+@media (min-width: 769px) { #mobile-fab { display: none !important; } }
+
+/* ══════════════════════════════════════════════════════
+   TOUCH-FRIENDLY TARGETS
+══════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .nav-item { min-height: 44px; padding: 10px 20px; }
+  .btn { min-height: 40px; }
+  /* FIX: all inputs 16px and full-width to kill dead tap zones */
+  .inp, .inp.sel {
+    min-height: 46px;
+    font-size: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    touch-action: auto;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .inp.ta { font-size: 16px; min-height: 100px; }
+  .chip { padding: 6px 12px; min-height: 36px; display: flex; align-items: center; }
+  .tab { min-height: 40px; display: inline-flex; align-items: center; }
+  .tbl td .btn { min-height: 34px; }
+  .kanban-card { padding: 12px; }
+  .toggle { width: 44px; height: 24px; border-radius: 12px; }
+  .toggle::after { width: 20px; height: 20px; }
+  .toggle.on::after { left: calc(100% - 22px); }
+}
+
+/* ══════════════════════════════════════════════════════
+   LANDSCAPE PHONE
+══════════════════════════════════════════════════════ */
+@media (max-width: 768px) and (orientation: landscape) and (max-height: 500px) {
+  .modal { max-height: calc(100dvh - 10px); border-radius: 12px 12px 0 0; }
+  .stats-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ══════════════════════════════════════════════════════
+   PRINT
+══════════════════════════════════════════════════════ */
+@media print {
+  #sidebar, #topbar, #hamburger-btn, #mobile-fab, #sidebar-overlay { display: none !important; }
+  #main { width: 100%; }
+  #content { overflow: visible; padding: 0; }
+  .screen.active { display: block; }
+}
