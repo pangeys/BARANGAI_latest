@@ -336,6 +336,16 @@ const SEVERITY_EXEMPLARS = {
     "dukot dinukot kidnap kinidnap",
     "kutsilyo baril sasaksakin babarilin tutok",
     "abuso sekswal lapastangan",
+    /* PATCH v2: property encroachment — sinakop/naagaw ng lote warrants High
+       severity even without a weapon, because it constitutes unlawful
+       dispossession of real property which can escalate rapidly and cause
+       irreversible harm to the complainant. */
+    "sinakop naagaw agaw lote lupain pilit pumasok",
+    /* PATCH v2: large financial loss — a complaint explicitly mentioning a
+       very large sum (handled separately by extractAmountBucket, but
+       adding an exemplar here improves Jaccard scoring for debt complaints
+       that do NOT contain a peso sign but describe the amount in words). */
+    "malaking utang libu-libo daan-libo hindi nagbabayad",
   ],
   Medium: [
     "suntok sinuntok sampal sinampal sakal sinakal",
@@ -369,13 +379,32 @@ for (const label of Object.keys(SEVERITY_EXEMPLARS)) {
 
 /* If ANY of these root strings appear inside ANY word of the complaint,
    force High severity — these signal danger severe enough that no
-   amount of surrounding "diluting" text should lower the score. */
+   amount of surrounding "diluting" text should lower the score.
+
+   PATCH v2 CHANGES:
+   - Added threat/intimidation roots: 'banta', 'akot', 'takot', 'pananakot',
+     'pagbabanta', 'intimidasyon' — a direct threat of harm is legally
+     considered a grave offense under barangay jurisdiction and warrants
+     the same priority escalation as actual physical violence.
+   - Added physical contact roots that were previously only in CRITICAL_MEDIUM:
+     'sampal', 'suntok', 'sinuntok', 'sinampal' — any physical assault,
+     even without a weapon, should be treated as High severity so that
+     the weighted AHP score can reach the High tier threshold.
+   - Added property violence roots: 'sinakop', 'naagaw' — forcible
+     dispossession of land/property.
+*/
 const CRITICAL_HIGH_ROOTS = [
   'saksak','baril','sunog','gahasa','rape','hipo','bugbog','lason',
   'tortyur','dukot','kidnap','kutsilyo','itak','sundang','gulok',
   'tutok','patay','namatay','sugat','dugo','patalim','balisong',
   'lubid','tinali','asido','sumabog','pagsabog','gumuho','pagguho',
   'nilapa','inabuso','lapastangan',
+  /* PATCH v2 — threat / intimidation roots (High, not just Medium) */
+  'banta','akot','takot','pananakot','pagbabanta','intimidasyon',
+  /* PATCH v2 — physical contact without weapon (escalated from Medium) */
+  'sampal','suntok','sinuntok','sinampal',
+  /* PATCH v2 — forcible property dispossession */
+  'sinakop','naagaw',
 ];
 
 /* Self-harm / suicide language requires its own dedicated, highest-
