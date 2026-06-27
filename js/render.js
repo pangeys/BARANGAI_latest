@@ -177,7 +177,7 @@ function renderPriorityQueue() {
   }
   const sorted = [...complaints].sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
   tbody.innerHTML = sorted.map((c, i) => {
-    const scoreColor = parseFloat(c.score) >= 85 ? 'var(--red)' : parseFloat(c.score) >= 70 ? 'var(--amber)' : 'var(--blue)';
+    const scoreColor = parseFloat(c.score) >= 70 ? 'var(--red)' : parseFloat(c.score) >= 42 ? 'var(--amber)' : 'var(--blue)';
     const ahp        = computeAHPScore(c.category, c.affected, c.description);
     const isFinished = c.status === 'Resolved' || c.status === 'Closed';
     const btn        = !isFinished
