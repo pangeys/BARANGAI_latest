@@ -75,7 +75,7 @@ const AFFECTED_TFN = {
 const PRIORITY_TIER_CUTOFFS = {
   Critical: 70,
   High:     42,
-  Medium:   20,
+  Medium:   21,
   Low:      0,
 };
 

@@ -81,7 +81,7 @@
   "priority_tier_cutoffs": {
     "Critical": 70,
     "High": 42,
-    "Medium": 20,
+    "Medium": 21,
     "Low": 0
   },
   "historical_crossref_boost": 5,
