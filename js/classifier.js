@@ -353,7 +353,7 @@ const SEVERITY_EXEMPLARS = {
     "banta nagbanta takot pananakot babantaan",
     "sira sinira putol pinutulan",
     "aksidente bangga nabangga sagasa",
-    "kagat kinagat aso",
+    "kagat kinagat kinagat ng aso sinagasaan binangga",
     "sipa sinipa palo pinalo",
     "itak gulok dala",
     "pitsirol ambang sambang",
@@ -526,6 +526,18 @@ function extractSeverity(text) {
     bestLabel = 'Low';
   }
 
+  /* Fix: if the best Jaccard score is too weak (below 0.05), the match
+     is essentially noise — a single common word like 'hindi' or 'utang'
+     accidentally overlapping with an unrelated exemplar. In this case,
+     fall back to the peso-amount check first, then default to Low rather
+     than trusting a near-zero Jaccard signal that could falsely inflate
+     an unrelated inquiry into High severity. */
+  if (bestScore > 0 && bestScore < 0.05) {
+    const amt = extractAmountBucket(text.toLowerCase());
+    if (amt) return amt;
+    bestLabel = 'Low';
+  }
+
   /* Medium-tier critical override: a long sentence can dilute the
      Jaccard overlap score for a genuine Medium-severity signal (e.g.
      "nagbanta", "ninakaw") below any exemplar's overlap. If the best
@@ -567,7 +579,11 @@ function extractAmountBucket(text) {
   }
   if (top === 0) return null;
   if (top >= 100000) return 'High';
-  if (top >= 15000) return 'Medium';
+  if (top >= 15000)  return 'Medium';
+  if (top >= 1)      return 'Low';   /* Fix: small explicit peso amounts (below 15,000)
+                                         return Low instead of null, preventing the
+                                         Jaccard fallback from inflating a minor debt
+                                         complaint into a higher severity tier. */
   return 'Low';
 }
 
