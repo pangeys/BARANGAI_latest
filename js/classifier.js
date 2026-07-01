@@ -538,6 +538,17 @@ function extractSeverity(text) {
     bestLabel = 'Low';
   }
 
+  /* Fix: for debt-related complaints, the peso amount is always a more
+     reliable severity signal than vocabulary overlap with the High exemplar.
+     A complaint containing 'utang' but only a small amount (below 15,000)
+     should never be scored High just because it shares words like 'utang'
+     or 'hindi nagbabayad' with the large-debt exemplar. The amount check
+     takes priority over the Jaccard result whenever debt language is present. */
+  if (lower.includes('utang') || lower.includes('bayad') || lower.includes('pesos') || lower.includes('piso')) {
+    const amt = extractAmountBucket(text.toLowerCase());
+    if (amt) return amt;
+  }
+
   /* Medium-tier critical override: a long sentence can dilute the
      Jaccard overlap score for a genuine Medium-severity signal (e.g.
      "nagbanta", "ninakaw") below any exemplar's overlap. If the best
