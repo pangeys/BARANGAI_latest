@@ -316,67 +316,6 @@ function cleanWords(text) {
   return new Set(t.split(/\s+/).filter(w => w.length > 1 && !STOP_LOCAL.has(w)));
 }
 
-function jaccardOverlap(setA, setB) {
-  if (setA.size === 0 || setB.size === 0) return 0;
-  let inter = 0;
-  for (const w of setA) if (setB.has(w)) inter++;
-  const union = setA.size + setB.size - inter;
-  return union > 0 ? inter / union : 0;
-}
-
-const SEVERITY_EXEMPLARS = {
-  High: [
-    "saksak sinaksak kutsilyo sugat dumudugo",
-    "baril binaril namatay nasawi patay",
-    "sunog sinunog susunog nasusunog apoy susunugin",
-    "gahasa panggagahasa rape hinipuan",
-    "bugbog binugbog walang malay naospital",
-    "nilason lason biktima",
-    "tortyur tinortyur pinahirapan",
-    "dukot dinukot kidnap kinidnap",
-    "kutsilyo baril sasaksakin babarilin tutok",
-    "abuso sekswal lapastangan",
-    /* PATCH v2: property encroachment — sinakop/naagaw ng lote warrants High
-       severity even without a weapon, because it constitutes unlawful
-       dispossession of real property which can escalate rapidly and cause
-       irreversible harm to the complainant. */
-    "sinakop naagaw agaw lote lupain pilit pumasok",
-    /* PATCH v2: large financial loss — a complaint explicitly mentioning a
-       very large sum (handled separately by extractAmountBucket, but
-       adding an exemplar here improves Jaccard scoring for debt complaints
-       that do NOT contain a peso sign but describe the amount in words). */
-    "malaking utang libu-libo daan-libo hindi nagbabayad",
-  ],
-  Medium: [
-    "suntok sinuntok sampal sinampal sakal sinakal",
-    "nakaw ninakaw nagnakaw",
-    "banta nagbanta takot pananakot babantaan",
-    "sira sinira putol pinutulan",
-    "aksidente bangga nabangga sagasa",
-    "kagat kinagat kinagat ng aso sinagasaan binangga",
-    "sipa sinipa palo pinalo",
-    "itak gulok dala",
-    "pitsirol ambang sambang",
-  ],
-  Low: [
-    "utang bayad pagkakautang nagbabayad",
-    "alitan pagkakaunawaan tsismis",
-    "ingay gabi kaguluhan",
-    "nawala gamit cellphone wallet",
-    "lupa hangganan pagkakasundo",
-    "panirang puri social media",
-    "dumating pulong",
-    "basura amoy ihi tapon kalat",
-    "residente komunidad reklamo",
-  ],
-};
-
-/* Pre-tokenize exemplars once at load time (not per-call) for speed */
-const _severityExemplarSets = {};
-for (const label of Object.keys(SEVERITY_EXEMPLARS)) {
-  _severityExemplarSets[label] = SEVERITY_EXEMPLARS[label].map(cleanWords);
-}
-
 /* If ANY of these root strings appear inside ANY word of the complaint,
    force High severity — these signal danger severe enough that no
    amount of surrounding "diluting" text should lower the score.
@@ -470,21 +409,6 @@ function hasChildAbuseSignal(text) {
    doesn't dilute a real Medium-severity signal down to Low via the
    Jaccard exemplar scoring below. Only upgrades Low → Medium; never
    downgrades an exemplar match that already scored High or Medium. */
-const CRITICAL_MEDIUM_ROOTS = [
-  'suntok','nakaw','banta','sira','aksidente','kagat','sipa',
-  'sampal','sakal','sakit','gulpi','palo','pitsirol','akot','basag',
-  'batuta','binato','pagbato','lubog',
-  /* "baha" (flood) needs a word-boundary-safe explicit form instead of
-     the bare root, since the loose root matcher's substring search
-     also matches it inside unrelated words like "kapitBAHAyan" or
-     "kapitBAHAy" */
-  'bumaha','bumabaha','pagbaha','baha ng',
-  /* explicit literal forms — the "sakit" root regex above doesn't
-     reliably catch these because the -IN- infix lands after a
-     reduplicated/lengthened syllable ("sa-SA-ktan"), which the
-     single-infix-position root matcher isn't built to handle */
-  'sinasaktan','sasaktan','nasaktan','saktan',
-];
 
 function hasCriticalHighSignal(words, fullTextLower) {
   /* Use the regex-based root matcher (handles Tagalog infixes/prefixes
@@ -494,71 +418,64 @@ function hasCriticalHighSignal(words, fullTextLower) {
   return anyRootMatches(fullTextLower, CRITICAL_HIGH_ROOTS);
 }
 
-function extractSeverity(text) {
+function extractSeverity(text, category) {
+  /* ── 3-Layer Severity System ──────────────────────────────────────
+     Layer 1  Safety overrides — fire first, regardless of category.
+              These catch genuinely dangerous signals even when the
+              SVM misclassifies the complaint category. If any Layer 1
+              signal is present the function returns 'High' immediately.
+
+     Layer 2  Category-based floor — the SVM's classification is the
+              most reliable signal we have about the nature of a
+              complaint. Each category maps to a sensible default
+              severity that reflects the typical harm level of that
+              dispute type under the KP framework (RA 7160).
+                Petty Criminal Offenses → High   (criminal by definition)
+                Property Disputes       → Medium  (often escalates)
+                All others              → Low     (civil/mediation level)
+
+     Layer 3  Amount modifier — an explicit peso amount in any category
+              can raise the severity floor, but never lower it. A large
+              debt or financial loss elevates urgency regardless of how
+              the SVM categorised the complaint.
+                >= ₱100,000 → raise to High
+                >= ₱15,000  → raise to Medium (if currently Low)
+                < ₱15,000   → keep Layer 2 floor
+  ─────────────────────────────────────────────────────────────────── */
+
   const lower = String(text).toLowerCase();
   const words = cleanWords(text);
-  if (words.size === 0) return 'Low';
 
-  if (hasSelfHarmSignal(lower)) return 'High';
+  /* ── Layer 1: Safety overrides ── */
+  if (hasSelfHarmSignal(lower))        return 'High';
   if (hasMedicalEmergencySignal(lower)) return 'High';
-  if (hasChildAbuseSignal(lower)) return 'High';
+  if (hasChildAbuseSignal(lower))      return 'High';
   if (hasCriticalHighSignal(words, lower)) return 'High';
 
-  let bestLabel = 'Low';
-  let bestScore = 0;
-  for (const label of Object.keys(_severityExemplarSets)) {
-    for (const exemplarSet of _severityExemplarSets[label]) {
-      const score = jaccardOverlap(words, exemplarSet);
-      if (score > bestScore) {
-        bestScore = score;
-        bestLabel = label;
-      }
-    }
+  /* ── Layer 2: Category floor ── */
+  const cat = (category || '').trim();
+  let severity;
+  if (cat === 'Petty Criminal Offenses') {
+    severity = 'High';
+  } else if (cat === 'Property Disputes') {
+    severity = 'Medium';
+  } else {
+    /* Contract Disputes, Family Matters, Money/Debt Disputes,
+       Neighbor Disputes — all start at Low; Layer 3 may raise. */
+    severity = 'Low';
   }
 
-  /* If nothing matched any exemplar at all (bestScore still 0), fall
-     back to a peso-amount check before defaulting to Low — a complaint
-     about a very large sum of money still warrants elevated severity
-     even with no violence-related vocabulary. */
-  if (bestScore === 0) {
-    const amt = extractAmountBucket(text.toLowerCase());
-    if (amt) return amt;
-    bestLabel = 'Low';
+  /* ── Layer 3: Amount modifier (raises floor, never lowers) ── */
+  const amt = extractAmountBucket(lower);
+  if (amt === 'High' && severity !== 'High') {
+    severity = 'High';
+  } else if (amt === 'Medium' && severity === 'Low') {
+    severity = 'Medium';
   }
 
-  /* Fix: if the best Jaccard score is too weak (below 0.05), the match
-     is essentially noise — a single common word like 'hindi' or 'utang'
-     accidentally overlapping with an unrelated exemplar. In this case,
-     fall back to the peso-amount check first, then default to Low rather
-     than trusting a near-zero Jaccard signal that could falsely inflate
-     an unrelated inquiry into High severity. */
-  if (bestScore > 0 && bestScore < 0.05) {
-    const amt = extractAmountBucket(text.toLowerCase());
-    if (amt) return amt;
-    bestLabel = 'Low';
-  }
-
-  /* Fix: for debt-related complaints, the peso amount is always a more
-     reliable severity signal than vocabulary overlap with the High exemplar.
-     A complaint containing 'utang' but only a small amount (below 15,000)
-     should never be scored High just because it shares words like 'utang'
-     or 'hindi nagbabayad' with the large-debt exemplar. The amount check
-     takes priority over the Jaccard result whenever debt language is present. */
-  if (lower.includes('utang') || lower.includes('bayad') || lower.includes('pesos') || lower.includes('piso')) {
-    const amt = extractAmountBucket(text.toLowerCase());
-    if (amt) return amt;
-  }
-
-  /* Medium-tier critical override: a long sentence can dilute the
-     Jaccard overlap score for a genuine Medium-severity signal (e.g.
-     "nagbanta", "ninakaw") below any exemplar's overlap. If the best
-     exemplar match still landed on Low, but a Medium-signal root word
-     is literally present, upgrade to Medium rather than under-scoring. */
-  if (bestLabel === 'Low' && anyRootMatches(lower, CRITICAL_MEDIUM_ROOTS)) {
-    return 'Medium';
-  }
-  return bestLabel;
+  return severity;
 }
+
 
 /* ══════════════════════════════════════════════════════
    URGENCY SCORING
@@ -599,13 +516,27 @@ function extractAmountBucket(text) {
 }
 
 function extractUrgency(text, severity) {
+  /* Urgency reflects how quickly action is needed, not how serious the
+     harm is. A property dispute or moderate debt is serious (Medium
+     severity) but rarely time-critical — it needs mediation, not an
+     emergency response. Only complaints that contain explicit immediacy
+     language (kagabi, ngayon, kasalukuyan, emergency, etc.) should
+     receive Medium urgency when severity is Medium.
+
+     Mapping:
+       High severity + immediate word → Immediate
+       High severity                  → High
+       Medium severity + immediate    → Medium
+       Medium severity (no immediate) → Low   ← KEY CHANGE
+       Low severity                   → Low
+  */
   const d = text.toLowerCase();
   if (hasSelfHarmSignal(d)) return 'Immediate';
   if (hasMedicalEmergencySignal(d)) return 'Immediate';
   const immediate = IMMEDIATE_WORDS.some(w => d.includes(w));
   if (severity === 'High' && immediate) return 'Immediate';
   if (severity === 'High') return 'High';
-  if (severity === 'Medium') return 'Medium';
+  if (severity === 'Medium' && immediate) return 'Medium';
   return 'Low';
 }
 
@@ -681,7 +612,7 @@ function computeAHPScore(category, affected, description) {
 
   const desc = description || '';
 
-  const sevLabel  = extractSeverity(desc);
+  const sevLabel  = extractSeverity(desc, category);
   const urgLabel  = extractUrgency(desc, sevLabel);
   const freqLabel = extractFrequency(desc);
   const affBucket = extractAffectedBucket(affected, desc);
@@ -716,6 +647,10 @@ function computeAHPScore(category, affected, description) {
   if (selfHarmFlag) score = 100;
 
   const medicalEmergencyFlag = !selfHarmFlag && hasMedicalEmergencySignal(desc);
+  /* Fix A: Medical emergencies are life-threatening — force score to 100
+     same as self-harm, so they always surface as Critical regardless of
+     how the Fuzzy AHP formula scores the other criteria. */
+  if (medicalEmergencyFlag) score = 100;
 
   const tier = priorityTierFromScore(score, cfg.priority_tier_cutoffs);
 
