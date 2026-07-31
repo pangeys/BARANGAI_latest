@@ -145,7 +145,7 @@ case 'update_user':
     if ($id === (int)$admin['id'] && $role && $role !== 'admin')
         out(false, ['error' => "You can't remove your own admin role."], 422);
     $allowedRoles  = ['admin','staff','viewer'];
-    $allowedStatus = ['active','disabled'];
+    $allowedStatus = ['active','disabled','pending'];
     if ($role   && !in_array($role,   $allowedRoles,  true)) out(false, ['error' => 'Bad role.'], 422);
     if ($status && !in_array($status, $allowedStatus, true)) out(false, ['error' => 'Bad status.'], 422);
     $bid  = (int)$admin['barangay_id'];

@@ -20,7 +20,7 @@ case 'login':
     $password   = $input['password']         ?? '';
     if (!$identifier || !$password) out(false, ['error' => 'Missing credentials'], 422);
 
-    $stmt = $db->prepare('SELECT * FROM users WHERE (username = ? OR email = ?) AND status = "active" LIMIT 1');
+    $stmt = $db->prepare('SELECT * FROM users WHERE (username = ? OR email = ?) LIMIT 1');
     $stmt->bind_param('ss', $identifier, $identifier);
     $stmt->execute();
     $user = $stmt->get_result()->fetch_assoc();
@@ -28,6 +28,14 @@ case 'login':
 
     if (!$user || !password_verify($password, $user['password_hash']))
         out(false, ['error' => 'Invalid username/email or password'], 401);
+
+    // Password is correct — now check account status separately so we can
+    // give an honest, specific reason instead of a generic error. This is
+    // safe to reveal only AFTER the password has already been verified.
+    if ($user['status'] === 'pending')
+        out(false, ['error' => 'Your account is awaiting approval from your barangay office. Please check back later.'], 403);
+    if ($user['status'] !== 'active')
+        out(false, ['error' => 'Your account has been disabled. Please contact your barangay office.'], 403);
 
     // grab the PREVIOUS last_login before we overwrite it (for the confirm screen)
     $prevLogin = $user['last_login'] ?? null;
@@ -112,11 +120,16 @@ case 'signup':
     $chk->close();
 
     $hash = password_hash($pw, PASSWORD_DEFAULT);
-    $ins  = $db->prepare('INSERT INTO users (full_name, email, password_hash, role, barangay_id, phone, address) VALUES (?, ?, ?, "resident", ?, ?, ?)');
+    // New resident accounts start as "pending" — they cannot sign in until
+    // a barangay admin verifies and approves them from the Users screen.
+    // This closes the gap where anyone could self-register and immediately
+    // start filing complaints with no verification that they are a real
+    // resident of that barangay.
+    $ins  = $db->prepare('INSERT INTO users (full_name, email, password_hash, role, barangay_id, phone, address, status) VALUES (?, ?, ?, "resident", ?, ?, ?, "pending")');
     $ins->bind_param('sssiss', $name, $email, $hash, $brgy_id, $phone, $address);
 
     if ($ins->execute()) {
-        out(true, ['message' => 'Account created successfully.']);
+        out(true, ['message' => 'Account created! A barangay official will review and approve your account before you can sign in.']);
     } else {
         out(false, ['error' => 'Registration failed: ' . $ins->error], 500);
     }

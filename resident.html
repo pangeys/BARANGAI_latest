@@ -213,6 +213,12 @@
           </div>
         </div>
 
+        <!-- Honeypot: invisible to real residents, catches automated bot spam.
+             Left as a normal-looking field name so bots can't easily tell it's a trap. -->
+        <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
+          <input type="text" id="f_website" name="website" tabindex="-1" autocomplete="off">
+        </div>
+
         <div style="margin-top:24px;">
           <button class="btn btn-primary" id="submitBtn"
             style="width:100%;justify-content:center;padding:13px;font-size:15px;">
@@ -414,6 +420,11 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   const desc     = document.getElementById('f_desc').value.trim();
   const name     = document.getElementById('f_name').value.trim();
   const affected = document.getElementById('f_affected').value;
+  const honeypot = document.getElementById('f_website').value;
+
+  // Bots that auto-fill every field on the page will fill this hidden
+  // field. Real residents never see it, so it should always be empty.
+  if (honeypot) { showMsg('err', 'Submission blocked.'); return; }
 
   if (!date)     { showMsg('err', 'Please select the date of the incident.'); return; }
   if (!location) { showMsg('err', 'Please enter the location of the incident.'); return; }
@@ -454,7 +465,8 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
         confidence:     confidence,
         priority:       priority,
         priority_badge: priority_badge,
-        score:          score
+        score:          score,
+        website:        honeypot
       })
     });
     const data = await res.json();

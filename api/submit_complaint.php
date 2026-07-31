@@ -45,7 +45,16 @@ if ($action === 'my_complaints') {
 /* ════════════════════════════════════════════════════
    POST (default) — submit a new complaint
 ════════════════════════════════════════════════════ */
-$input         = json_decode(file_get_contents('php://input'), true) ?? [];
+$input = json_decode(file_get_contents('php://input'), true) ?? [];
+
+// Honeypot check — a real resident's browser leaves this field empty since
+// it's invisible on the page. Only an automated script filling every field
+// blindly would send a value here. Reject silently as if it succeeded, so
+// bots don't learn their submission was specifically detected and blocked.
+if (!empty($input['website'])) {
+    out(true, ['complaint_no' => 'RES-0000-00000']);
+}
+
 $incident_date = $input['incident_date'] ?? '';
 $incident_time = $input['incident_time'] ?: null;
 $location      = trim($input['location']    ?? '');
@@ -62,6 +71,39 @@ $score          = $input['score']          ?? '';
 
 if (!$incident_date || !$location || !$description)
     out(false, ['error' => 'Date, location, and description are required.'], 422);
+
+/* ── Anti-spam Layer: rate limit + duplicate detection ──────────────
+   Prevents one resident account from flooding the priority queue,
+   whether by accident (double-click) or intentional abuse. Both checks
+   are scoped to submitted_by = this resident's own account only. */
+$uid = (int)$user['id'];
+
+// 1. Daily cap: max 3 complaints per resident per rolling 24 hours
+$capStmt = $db->prepare(
+    'SELECT COUNT(*) FROM complaints
+      WHERE submitted_by = ? AND created_at >= NOW() - INTERVAL 24 HOUR'
+);
+$capStmt->bind_param('i', $uid);
+$capStmt->execute();
+$recentCount = (int)$capStmt->get_result()->fetch_row()[0];
+$capStmt->close();
+
+if ($recentCount >= 3)
+    out(false, ['error' => 'You have reached the limit of 3 complaints per day. Please try again tomorrow, or contact your barangay office directly for urgent matters.'], 429);
+
+// 2. Duplicate guard: same resident, near-identical description, within 10 minutes
+$dupStmt = $db->prepare(
+    'SELECT COUNT(*) FROM complaints
+      WHERE submitted_by = ? AND description = ?
+        AND created_at >= NOW() - INTERVAL 10 MINUTE'
+);
+$dupStmt->bind_param('is', $uid, $description);
+$dupStmt->execute();
+$dupCount = (int)$dupStmt->get_result()->fetch_row()[0];
+$dupStmt->close();
+
+if ($dupCount > 0)
+    out(false, ['error' => 'This looks like a complaint you already submitted a few minutes ago. Please check "My Complaints" before submitting again.'], 409);
 
 $year = date('Y');
 $cnt  = (int)$db->query("SELECT COUNT(*) FROM complaints WHERE submitted_by IS NOT NULL")->fetch_row()[0];

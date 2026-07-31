@@ -608,7 +608,7 @@ function roleBadge(role) {
   return '<span class="badge ' + cls + '">' + label + '</span>';
 }
 function statusBadgeUser(status) {
-  const cls = status === 'active' ? 'b-green' : 'b-red';
+  const cls = status === 'active' ? 'b-green' : status === 'pending' ? 'b-amber' : 'b-red';
   return '<span class="badge ' + cls + '">' + (status || 'active') + '</span>';
 }
 
@@ -656,9 +656,13 @@ async function loadUsers() {
       '<td style="font-size:11px">' + fmtLogin(u.last_login) + '</td>' +
       '<td style="text-align:right;white-space:nowrap">' +
         (isMe ? '' :
-          '<button class="btn btn-ghost btn-sm" onclick="cycleUserRole(' + u.id + ',\'' + u.role + '\')">Role</button> ' +
-          '<button class="btn btn-ghost btn-sm" onclick="toggleUserStatus(' + u.id + ',\'' + u.status + '\')">' +
-            (u.status === 'active' ? 'Disable' : 'Enable') + '</button>'
+          u.status === 'pending' ?
+            '<button class="btn btn-primary btn-sm" onclick="approveUser(' + u.id + ')">Approve</button> ' +
+            '<button class="btn btn-ghost btn-sm" onclick="rejectUser(' + u.id + ')">Reject</button>'
+          :
+            '<button class="btn btn-ghost btn-sm" onclick="cycleUserRole(' + u.id + ',\'' + u.role + '\')">Role</button> ' +
+            '<button class="btn btn-ghost btn-sm" onclick="toggleUserStatus(' + u.id + ',\'' + u.status + '\')">' +
+              (u.status === 'active' ? 'Disable' : 'Enable') + '</button>'
         ) +
       '</td></tr>';
   }).join('');
@@ -676,6 +680,19 @@ async function toggleUserStatus(id, current) {
   const next = current === 'active' ? 'disabled' : 'active';
   const r = await profileCall('update_user', { id, status: next });
   if (!r.ok) { alert(r.error || 'Update failed.'); return; }
+  loadUsers();
+}
+/* Approve a newly-signed-up resident: pending -> active, so they can log in */
+async function approveUser(id) {
+  const r = await profileCall('update_user', { id, status: 'active' });
+  if (!r.ok) { alert(r.error || 'Could not approve user.'); return; }
+  loadUsers();
+}
+/* Reject a newly-signed-up resident: pending -> disabled */
+async function rejectUser(id) {
+  if (!confirm('Reject this account? They will not be able to sign in.')) return;
+  const r = await profileCall('update_user', { id, status: 'disabled' });
+  if (!r.ok) { alert(r.error || 'Could not reject user.'); return; }
   loadUsers();
 }
 
