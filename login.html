@@ -93,7 +93,7 @@
     <div class="row2">
       <div class="field" style="margin-bottom:12px;">
         <div class="label">Password *</div>
-        <input class="inp filled" id="su_pw" type="password" placeholder="Min 6 chars">
+        <input class="inp filled" id="su_pw" type="password" placeholder="Min 8 chars, incl. uppercase, number, symbol">
       </div>
       <div class="field" style="margin-bottom:12px;">
         <div class="label">Confirm *</div>
@@ -172,6 +172,7 @@
   </div>
 </div>
 
+<script src="js/password-rules.js"></script>
 <script>
 const AUTH    = 'api/auth.php';
 const PROFILE = 'api/profile.php';
@@ -284,7 +285,12 @@ $('pfSaveBtn').addEventListener('click', async function(){
   clearMsg('setupMsg');
   var name  = $('pf_name').value.trim();
   var email = $('pf_email').value.trim();
+  var pfPw  = $('pf_pw').value;
   if (!name || !email){ showMsg('setupMsg','err','Name and email are required.'); return; }
+  if (pfPw){
+    var pfPwErr = passwordStrengthError(pfPw);
+    if (pfPwErr){ showMsg('setupMsg','err',pfPwErr); return; }
+  }
   $('pfSaveBtn').disabled = true; $('pfSaveBtn').textContent = 'Saving…';
   try {
     var res = await fetch(PROFILE + '?action=update_profile', {
@@ -335,7 +341,8 @@ async function doSignup(){
       brgy=$('su_brgy').value, pw=$('su_pw').value, pw2=$('su_pw2').value,
       phone=$('su_phone').value.trim(), addr=$('su_addr').value.trim();
   if (!name||!email||!brgy){ showMsg('signupMsg','err','Fill in name, email, and barangay.'); return; }
-  if (pw.length<6){ showMsg('signupMsg','err','Password must be at least 6 characters.'); return; }
+  var pwErr = passwordStrengthError(pw);
+  if (pwErr){ showMsg('signupMsg','err',pwErr); return; }
   if (pw!==pw2){ showMsg('signupMsg','err','Passwords do not match.'); return; }
   $('signUpBtn').disabled=true; $('signUpBtn').textContent='Creating account…';
   try {

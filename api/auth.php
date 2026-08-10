@@ -106,8 +106,11 @@ case 'signup':
     $phone   = trim($input['phone']       ?? '');
     $address = trim($input['address']     ?? '');
 
-    if (!$name || !$email || strlen($pw) < 6 || $brgy_id <= 0)
-        out(false, ['error' => 'Please fill all required fields (password min 6 chars).'], 422);
+    if (!$name || !$email || $brgy_id <= 0)
+        out(false, ['error' => 'Please fill all required fields.'], 422);
+
+    $pwError = password_strength_error($pw);
+    if ($pwError) out(false, ['error' => $pwError], 422);
     if (!filter_var($email, FILTER_VALIDATE_EMAIL))
         out(false, ['error' => 'Invalid email address.'], 422);
 

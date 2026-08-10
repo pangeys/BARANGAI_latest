@@ -83,7 +83,8 @@ case 'update_profile':
             out(false, ['error' => 'Current password is incorrect.'], 401);
     }
     if ($newpw !== '') {
-        if (strlen($newpw) < 6) out(false, ['error' => 'Password must be at least 6 characters.'], 422);
+        $pwError = password_strength_error($newpw);
+        if ($pwError) out(false, ['error' => $pwError], 422);
         $hash = password_hash($newpw, PASSWORD_DEFAULT);
         $stmt = $db->prepare('UPDATE users SET full_name=?, email=?, phone=?, address=?, password_hash=?, profile_completed=1 WHERE id=?');
         $stmt->bind_param('sssssi', $name, $email, $phone, $address, $hash, $u['id']);
@@ -118,8 +119,10 @@ case 'create_user':
     $pw    = $input['password']        ?? '';
     $allowedRoles = ['admin','staff','viewer'];
     if (!in_array($role, $allowedRoles, true)) $role = 'staff';
-    if ($name===''||$email===''||$uname===''||strlen($pw)<6)
-        out(false, ['error' => 'All fields required (password min 6 chars).'], 422);
+    if ($name===''||$email===''||$uname==='')
+        out(false, ['error' => 'All fields are required.'], 422);
+    $pwError = password_strength_error($pw);
+    if ($pwError) out(false, ['error' => $pwError], 422);
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) out(false, ['error' => 'Invalid email.'], 422);
     $chk = $db->prepare('SELECT id FROM users WHERE email = ? OR username = ?');
     $chk->bind_param('ss', $email, $uname);

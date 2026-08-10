@@ -700,15 +700,18 @@ async function rejectUser(id) {
 function openAddUser()  { const m = document.getElementById('addUserModal'); if (m) m.classList.add('open'); }
 function closeAddUser() { const m = document.getElementById('addUserModal'); if (m) m.classList.remove('open'); }
 async function submitAddUser() {
+  const pw = document.getElementById('au_pw').value;
+  const msg = document.getElementById('au_msg');
+  msg.textContent = '';
+  const pwErr = passwordStrengthError(pw);
+  if (pwErr) { msg.style.color = 'var(--red)'; msg.textContent = pwErr; return; }
   const body = {
     full_name: document.getElementById('au_name').value.trim(),
     email:     document.getElementById('au_email').value.trim(),
     username:  document.getElementById('au_username').value.trim(),
     role:      document.getElementById('au_role').value,
-    password:  document.getElementById('au_pw').value,
+    password:  pw,
   };
-  const msg = document.getElementById('au_msg');
-  msg.textContent = '';
   const r = await profileCall('create_user', body);
   if (!r.ok) { msg.style.color = 'var(--red)'; msg.textContent = r.error || 'Could not create user.'; return; }
   closeAddUser();
