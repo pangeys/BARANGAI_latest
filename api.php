@@ -4,10 +4,7 @@ ini_set('display_errors', 0);
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-define('DB_HOST', 'sql113.infinityfree.com');
-define('DB_USER', 'if0_42015849');
-define('DB_PASS', 'thesisdemarizo');
-define('DB_NAME', 'if0_42015849_bai');
+require_once __DIR__ . '/api/config.php';
 
 header("Content-Type: application/json; charset=utf-8");
 header("Access-Control-Allow-Origin: *");
@@ -15,14 +12,6 @@ header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
-
-$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
-$conn->set_charset('utf8mb4');
-if ($conn->connect_error) {
-    http_response_code(500);
-    echo json_encode(["error" => "DB connection failed: " . $conn->connect_error]);
-    exit;
-}
 
 function respond($data, $code = 200) {
     http_response_code($code);
@@ -41,10 +30,32 @@ function logActivity($conn, $userId, $userName, $barangayId, $action, $detail) {
     $stmt->close();
 }
 
-$sessionUser = $_SESSION['user'] ?? [];
+$sessionUser = $_SESSION['user'] ?? null;
+
+/*
+ * SECURITY GATE:
+ * This root api.php powers the administrator dashboard only.
+ * Password verification + successful 2FA must already have created
+ * $_SESSION['user'] before any dashboard data can be read or modified.
+ */
+if (!$sessionUser || empty($sessionUser['id'])) {
+    respond(['error' => 'Authentication required'], 401);
+}
+
+if (($sessionUser['role'] ?? '') !== 'admin') {
+    respond(['error' => 'Administrator access required'], 403);
+}
+
 $barangay_id = isset($sessionUser['barangay_id']) ? (int)$sessionUser['barangay_id'] : 0;
-$userId      = isset($sessionUser['id'])          ? (int)$sessionUser['id']          : 0;
-$userName    = $sessionUser['name']               ?? 'Unknown';
+$userId      = (int)$sessionUser['id'];
+$userName    = $sessionUser['name'] ?? 'Unknown';
+
+if ($barangay_id <= 0) {
+    respond(['error' => 'Administrator barangay is not configured'], 403);
+}
+
+/* Connect only after authentication/authorization succeeds. */
+$conn = getDB();
 
 $method = $_SERVER['REQUEST_METHOD'];
 $type   = $_GET['type'] ?? '';

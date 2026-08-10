@@ -1,152 +1,160 @@
 <?php
 // ═══════════════════════════════════════════════════════
-//  BICTS — api/complaints.php
-//  GET  /api/complaints.php        → fetch complaints (filtered by barangay)
-//  GET  /api/complaints.php?id=5   → fetch single complaint
-//  POST /api/complaints.php        → save a new complaint (admin wizard)
+//  BarangAI — api/complaints.php
+//  ADMIN-ONLY complaints endpoint.
+//  GET  /api/complaints.php        → complaints for admin's barangay
+//  GET  /api/complaints.php?id=5   → one complaint in admin's barangay
+//  POST /api/complaints.php        → create complaint for admin's barangay
 // ═══════════════════════════════════════════════════════
 
 if (session_status() === PHP_SESSION_NONE) session_start();
-require_once 'config.php';
-$db = getDB();
+require_once __DIR__ . '/config.php';
 
-// ── Helper: get logged-in admin's barangay_id ──────────────────────
-// Returns null if not logged in (fallback: show all — for dev/testing)
-function getAdminBarangayId() {
-    if (!empty($_SESSION['user']) && $_SESSION['user']['role'] === 'admin') {
-        return (int)$_SESSION['user']['barangay_id'];
-    }
-    return null;
+header('Content-Type: application/json; charset=utf-8');
+
+function respond($data, $code = 200) {
+    http_response_code($code);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
 }
+
+function require_admin_session() {
+    $user = $_SESSION['user'] ?? null;
+
+    if (!$user || empty($user['id'])) {
+        respond(['error' => 'Authentication required'], 401);
+    }
+
+    if (($user['role'] ?? '') !== 'admin') {
+        respond(['error' => 'Administrator access required'], 403);
+    }
+
+    $barangayId = (int)($user['barangay_id'] ?? 0);
+    if ($barangayId <= 0) {
+        respond(['error' => 'Administrator barangay is not configured'], 403);
+    }
+
+    return $user;
+}
+
+// IMPORTANT: Require a fully authenticated admin session before opening DB.
+$admin = require_admin_session();
+$barangay_id = (int)$admin['barangay_id'];
+
+$db = getDB();
 
 // ══════════════════════════════════════════════════════════════════
 //  POST — Admin wizard submits a new complaint
 // ══════════════════════════════════════════════════════════════════
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = json_decode(file_get_contents('php://input'), true);
-    if (!$body) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Invalid JSON body']);
-        exit();
+
+    if (!is_array($body)) {
+        respond(['error' => 'Invalid JSON body'], 400);
     }
 
-    // tag complaint with admin's barangay
-    $barangay_id = getAdminBarangayId();
-
-    $complaint_id  = $body['id']           ?? '#000';
+    $complaint_id  = $body['id']          ?? '#000';
     $date_filed    = date('Y-m-d');
-    $incident_date = $body['date']         ?? null;
-    $incident_time = $body['time']         ?? null;
-    $location      = $body['location']     ?? '';
-    $description   = $body['description']  ?? '';
-    $complainant   = $body['complainant']  ?? 'Anonymous';
+    $incident_date = $body['date']        ?? null;
+    $incident_time = $body['time']        ?? null;
+    $location      = $body['location']    ?? '';
+    $description   = $body['description'] ?? '';
+    $complainant   = $body['complainant'] ?? 'Anonymous';
     $affected      = (int)($body['affected'] ?? 1);
-    $category      = $body['category']     ?? '';
+    $category      = $body['category']    ?? '';
     $confidence    = (float)($body['confidence'] ?? 0);
-    $priority      = $body['priority']     ?? 'Low';
+    $priority      = $body['priority']    ?? 'Low';
     $score         = (float)($body['score'] ?? 0);
-    $officer       = $body['officer']      ?? '—';
-    $status        = $body['status']       ?? 'Open';
+    $officer       = $body['officer']     ?? '—';
+    $status        = $body['status']      ?? 'Open';
 
-    // derive badge values
     $priority_badge = 'b-gray';
-    if ($priority === 'Critical') $priority_badge = 'b-red';
-    elseif ($priority === 'High') $priority_badge = 'b-amber';
-    elseif ($priority === 'Medium') $priority_badge = 'b-blue';
-    elseif ($priority === 'Low')  $priority_badge = 'b-green';
+    if ($priority === 'Critical')      $priority_badge = 'b-red';
+    elseif ($priority === 'High')      $priority_badge = 'b-amber';
+    elseif ($priority === 'Medium')    $priority_badge = 'b-blue';
+    elseif ($priority === 'Low')       $priority_badge = 'b-green';
 
     $status_badge = 'b-gray';
-    if ($status === 'Resolved')    $status_badge = 'b-green';
-    if ($status === 'In Progress') $status_badge = 'b-blue';
-    if ($status === 'For Hearing') $status_badge = 'b-amber';
+    if ($status === 'Resolved')        $status_badge = 'b-green';
+    elseif ($status === 'In Progress') $status_badge = 'b-blue';
+    elseif ($status === 'For Hearing') $status_badge = 'b-amber';
 
-    if ($barangay_id) {
-        // with barangay_id
-        $stmt = $db->prepare("
-            INSERT INTO complaints
-              (complaint_id, date_filed, incident_date, incident_time, location,
-               description, complainant, affected, category, confidence,
-               priority, priority_badge, score, officer, status, status_badge, barangay_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
-        $stmt->bind_param(
-            'sssssssissssdssi',
-            $complaint_id, $date_filed, $incident_date, $incident_time,
-            $location, $description, $complainant, $affected,
-            $category, $confidence, $priority, $priority_badge,
-            $score, $officer, $status, $status_badge, $barangay_id
-        );
-    } else {
-        // no session (fallback — keeps old behavior)
-        $stmt = $db->prepare("
-            INSERT INTO complaints
-              (complaint_id, date_filed, incident_date, incident_time, location,
-               description, complainant, affected, category, confidence,
-               priority, score, officer, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
-        $stmt->bind_param(
-            'sssssssissddss',
-            $complaint_id, $date_filed, $incident_date, $incident_time,
-            $location, $description, $complainant, $affected,
-            $category, $confidence, $priority, $score, $officer, $status
-        );
-    }
+    $stmt = $db->prepare("
+        INSERT INTO complaints
+          (complaint_id, date_filed, incident_date, incident_time, location,
+           description, complainant, affected, category, confidence,
+           priority, priority_badge, score, officer, status, status_badge, barangay_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+
+    $stmt->bind_param(
+        'sssssssissssdssi',
+        $complaint_id, $date_filed, $incident_date, $incident_time,
+        $location, $description, $complainant, $affected,
+        $category, $confidence, $priority, $priority_badge,
+        $score, $officer, $status, $status_badge, $barangay_id
+    );
 
     if ($stmt->execute()) {
-        echo json_encode(['success' => true, 'inserted_id' => $db->insert_id]);
-    } else {
-        http_response_code(500);
-        echo json_encode(['error' => $stmt->error]);
+        $insertedId = $db->insert_id;
+        $stmt->close();
+        $db->close();
+        respond(['success' => true, 'inserted_id' => $insertedId]);
     }
+
+    $error = $stmt->error;
     $stmt->close();
-    exit();
+    $db->close();
+    respond(['error' => $error], 500);
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  GET — Fetch complaints (filtered by admin's barangay)
+//  GET — complaints belonging only to the authenticated admin's barangay
 // ══════════════════════════════════════════════════════════════════
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $barangay_id = getAdminBarangayId();
 
     if (isset($_GET['id'])) {
-        // ── Single complaint ──
-        $id   = (int)$_GET['id'];
+        $id = (int)$_GET['id'];
 
-        if ($barangay_id) {
-            // only fetch if it belongs to this admin's barangay
-            $stmt = $db->prepare("SELECT * FROM complaints WHERE id = ? AND barangay_id = ?");
-            $stmt->bind_param('ii', $id, $barangay_id);
-        } else {
-            $stmt = $db->prepare("SELECT * FROM complaints WHERE id = ?");
-            $stmt->bind_param('i', $id);
+        if ($id <= 0) {
+            $db->close();
+            respond(['error' => 'Invalid complaint id'], 422);
         }
 
+        $stmt = $db->prepare(
+            'SELECT * FROM complaints WHERE id = ? AND barangay_id = ? LIMIT 1'
+        );
+        $stmt->bind_param('ii', $id, $barangay_id);
         $stmt->execute();
-        echo json_encode($stmt->get_result()->fetch_assoc());
+        $row = $stmt->get_result()->fetch_assoc();
         $stmt->close();
+        $db->close();
 
-    } else {
-        // ── All complaints — filtered by barangay ──
-        if ($barangay_id) {
-            $stmt = $db->prepare("
-                SELECT * FROM complaints
-                WHERE barangay_id = ? 
-                ORDER BY date_filed DESC
-            ");
-            $stmt->bind_param('i', $barangay_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-        } else {
-            // no session — return all (fallback)
-            $result = $db->query("SELECT * FROM complaints ORDER BY date_filed DESC");
+        if (!$row) {
+            respond(['error' => 'Complaint not found'], 404);
         }
 
-        $rows = [];
-        while ($row = $result->fetch_assoc()) $rows[] = $row;
-        echo json_encode($rows);
+        respond($row);
     }
-    exit();
+
+    $stmt = $db->prepare(
+        'SELECT * FROM complaints
+         WHERE barangay_id = ?
+         ORDER BY date_filed DESC'
+    );
+    $stmt->bind_param('i', $barangay_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $rows = [];
+    while ($row = $result->fetch_assoc()) {
+        $rows[] = $row;
+    }
+
+    $stmt->close();
+    $db->close();
+    respond($rows);
 }
 
 $db->close();
+respond(['error' => 'Method not allowed'], 405);

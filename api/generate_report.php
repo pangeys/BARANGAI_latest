@@ -13,45 +13,113 @@
 //  Download: http://www.fpdf.org/  → fpdf182.zip → fpdf.php
 // ═══════════════════════════════════════════════════════
 
-require_once 'config.php';
-require_once 'fpdf.php';   // ← place fpdf.php in the same api/ folder
+if (session_status() === PHP_SESSION_NONE) session_start();
 
-$db        = getDB();
-$type      = $_GET['type']      ?? 'volume';
-$date_from = $_GET['date_from'] ?? '';
-$date_to   = $_GET['date_to']   ?? '';
-$viewMode  = !empty($_GET['view']);   // ?view=1 -> preview inline, otherwise download
+require_once __DIR__ . '/config.php';
 
-// ── Build date filter SQL ──
-$where  = '';
-$params = [];
-$types  = '';
-
-if ($date_from && $date_to) {
-    $where    = 'WHERE date_filed BETWEEN ? AND ?';
-    $params[] = $date_from;
-    $params[] = $date_to;
-    $types    = 'ss';
-} elseif ($date_from) {
-    $where    = 'WHERE date_filed >= ?';
-    $params[] = $date_from;
-    $types    = 's';
-} elseif ($date_to) {
-    $where    = 'WHERE date_filed <= ?';
-    $params[] = $date_to;
-    $types    = 's';
+function report_error($message, $code = 400) {
+    http_response_code($code);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
+    exit;
 }
+
+function require_admin_report_session() {
+    $user = $_SESSION['user'] ?? null;
+
+    if (!$user || empty($user['id'])) {
+        report_error('Authentication required', 401);
+    }
+
+    if (($user['role'] ?? '') !== 'admin') {
+        report_error('Administrator access required', 403);
+    }
+
+    $barangayId = (int)($user['barangay_id'] ?? 0);
+    if ($barangayId <= 0) {
+        report_error('Administrator barangay is not configured', 403);
+    }
+
+    return $user;
+}
+
+// Require a fully authenticated admin before loading FPDF or querying data.
+$admin = require_admin_report_session();
+$barangay_id = (int)$admin['barangay_id'];
+
+require_once __DIR__ . '/fpdf.php';
+
+$type      = $_GET['type']      ?? 'volume';
+$date_from = trim((string)($_GET['date_from'] ?? ''));
+$date_to   = trim((string)($_GET['date_to']   ?? ''));
+$viewMode  = !empty($_GET['view']);
+
+// Allow only the report types implemented below.
+$allowedTypes = ['classification', 'volume', 'response', 'outcome'];
+if (!in_array($type, $allowedTypes, true)) {
+    report_error('Invalid report type', 422);
+}
+
+function valid_report_date($value) {
+    if ($value === '') return true;
+
+    $date = DateTime::createFromFormat('!Y-m-d', $value);
+    return $date && $date->format('Y-m-d') === $value;
+}
+
+if (!valid_report_date($date_from) || !valid_report_date($date_to)) {
+    report_error('Dates must use YYYY-MM-DD format', 422);
+}
+
+if ($date_from !== '' && $date_to !== '' && $date_from > $date_to) {
+    report_error('date_from cannot be after date_to', 422);
+}
+
+$db = getDB();
+
+// SECURITY: every report is restricted to the authenticated admin's barangay.
+$whereParts = ['barangay_id = ?'];
+$params     = [$barangay_id];
+$types      = 'i';
+
+if ($date_from !== '') {
+    $whereParts[] = 'date_filed >= ?';
+    $params[] = $date_from;
+    $types .= 's';
+}
+
+if ($date_to !== '') {
+    $whereParts[] = 'date_filed <= ?';
+    $params[] = $date_to;
+    $types .= 's';
+}
+
+$where = 'WHERE ' . implode(' AND ', $whereParts);
 
 // ── Fetch complaints ──
 $sql  = "SELECT * FROM complaints $where ORDER BY date_filed ASC";
 $stmt = $db->prepare($sql);
-if ($params) {
-    $stmt->bind_param($types, ...$params);
+
+if (!$stmt) {
+    $db->close();
+    report_error('Could not prepare report query', 500);
 }
-$stmt->execute();
+
+$stmt->bind_param($types, ...$params);
+
+if (!$stmt->execute()) {
+    $stmt->close();
+    $db->close();
+    report_error('Could not load report data', 500);
+}
+
 $result     = $stmt->get_result();
 $complaints = [];
-while ($row = $result->fetch_assoc()) $complaints[] = $row;
+
+while ($row = $result->fetch_assoc()) {
+    $complaints[] = $row;
+}
+
 $stmt->close();
 
 // ── Date range label ──

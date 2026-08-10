@@ -7,6 +7,10 @@ define('DB_USER', 'if0_42015849');
 define('DB_PASS', 'thesisdemarizo');
 define('DB_NAME', 'if0_42015849_bai');
 
+// BarangAI 2FA secret-encryption key.
+// Keep this value private and never expose it to the frontend.
+define('TWO_FACTOR_ENCRYPTION_KEY_B64', 'n4E/toB0ShdIYMbJmyatu//iSUdUEiYEEWVfHVyPUWQ=');
+
 function getDB() {
     $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
     if ($conn->connect_error) {
@@ -42,15 +46,14 @@ function password_strength_error($pw) {
 }
 
 $callingFile = basename($_SERVER['SCRIPT_FILENAME']);
+
 if ($callingFile !== 'generate_report.php') {
-    header('Access-Control-Allow-Origin: *');
     header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
     header('Access-Control-Allow-Headers: Content-Type');
     header('Content-Type: application/json');
+
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         http_response_code(200);
         exit();
     }
-} else {
-    header('Access-Control-Allow-Origin: *');
 }

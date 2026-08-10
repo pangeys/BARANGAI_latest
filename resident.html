@@ -2,13 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BarangAI – Resident Portal</title>
-<link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="mobile-responsive.css"> 
+<link rel="stylesheet" href="styles.css?v=20260811-mobile3">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260811-mobile3"> 
 
 <style>
-  body { background: var(--bg, #f4f6fa); margin: 0; min-height: 100vh; }
+  html { background: var(--bg, #f4f6fa); }
+  body.resident-page {
+    background: var(--bg, #f4f6fa);
+    margin: 0;
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
 
   /* ── TOP HEADER ── */
   .res-header {
@@ -142,7 +152,7 @@
   .rc-empty-icon { font-size: 44px; margin-bottom: 12px; }
 </style>
 </head>
-<body>
+<body class="resident-page">
 
 <!-- ═══════ HEADER ═══════ -->
 <div class="res-header">
@@ -178,7 +188,7 @@
       <div class="card-body">
         <div id="formMsg" class="res-msg"></div>
 
-        <div class="frow">
+        <div class="frow date-time-row">
           <div class="field">
             <div class="label">Date of Incident <span>*</span></div>
             <input class="inp" id="f_date" type="date">
@@ -270,7 +280,7 @@
 <script src="js/data.js"></script>
 <script src="js/dataset.js"></script>
 <script src="js/classifier.js"></script>
-<script src="js/mobile.js"></script>   <!-- ADD THIS LINE -->
+<script src="js/mobile.js?v=20260811-mobile3"></script>   <!-- ADD THIS LINE -->
 
 <script>
 const AUTH_API = 'api/auth.php';
@@ -338,7 +348,7 @@ async function loadMyComplaints(){
     }
     box.innerHTML = d.complaints.map(renderComplaintCard).join('');
   } catch(e) {
-    box.innerHTML = '<div class="rc-empty"><div class="rc-empty-icon">⚠️</div>Cannot reach the server. Is Apache &amp; MySQL running?</div>';
+    box.innerHTML = '<div class="rc-empty"><div class="rc-empty-icon">⚠️</div>Cannot reach BarangAI right now. Check your connection and try again.</div>';
   }
 }
 
@@ -482,7 +492,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
       resetButton();
     }
   } catch(e) {
-    showMsg('err', 'Cannot reach the server. Is Apache & MySQL running?');
+    showMsg('err', 'Cannot reach BarangAI right now. Check your connection and try again.');
     resetButton();
   }
 });

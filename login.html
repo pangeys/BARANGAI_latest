@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BarangAI – Sign In</title>
-<link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="mobile-responsive.css">   <!-- ADD THIS LINE -->
+<link rel="stylesheet" href="styles.css?v=20260811-mobile3">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260811-mobile3">   <!-- ADD THIS LINE -->
 <style>
   .auth-switch{text-align:center;margin-top:14px;font-size:12px;color:var(--text3)}
   .auth-switch a{color:var(--blue);cursor:pointer;font-weight:600;text-decoration:none}
@@ -37,9 +37,81 @@
   .pf-row .field{flex:1}
   .pf-actions{display:flex;gap:10px;margin-top:20px}
   .pf-note{font-size:11px;color:var(--text3,#6b7685);margin-top:12px;line-height:1.5}
+
+  /* ---- 2FA modal ---- */
+  .twofa-code{
+    width:100%;
+    box-sizing:border-box;
+    text-align:center;
+    font-size:24px;
+    letter-spacing:8px;
+    font-weight:700;
+    padding:12px 14px;
+  }
+  .twofa-help{
+    font-size:12px;
+    color:var(--text3,#6b7685);
+    line-height:1.6;
+    margin:8px 0 14px;
+  }
+  .twofa-key{
+    font-family:monospace;
+    font-size:16px;
+    font-weight:700;
+    letter-spacing:1px;
+    word-break:break-word;
+    background:#f6f8fb;
+    border:1px solid #e3e8ef;
+    border-radius:9px;
+    padding:13px;
+    margin:8px 0 14px;
+    user-select:all;
+  }
+  .twofa-actions{display:flex;gap:10px;margin-top:14px}
+  .twofa-actions .btn{flex:1;justify-content:center}
+  .recovery-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin:12px 0 16px;
+  }
+  .recovery-code{
+    font-family:monospace;
+    font-weight:700;
+    text-align:center;
+    background:#f6f8fb;
+    border:1px solid #e3e8ef;
+    border-radius:8px;
+    padding:9px 6px;
+  }
+  .twofa-linkbtn{
+    width:100%;
+    border:0;
+    background:transparent;
+    color:#2369bd;
+    font-weight:700;
+    cursor:pointer;
+    padding:10px 6px 2px;
+    text-align:center;
+  }
+  .twofa-linkbtn:hover{text-decoration:underline}
+  .twofa-warning{
+    font-size:12px;
+    line-height:1.55;
+    padding:10px 12px;
+    border-radius:8px;
+    background:#fff8df;
+    color:#725600;
+    margin:10px 0;
+  }
+  @media(max-width:480px){
+    .recovery-grid{grid-template-columns:1fr}
+    .twofa-actions{flex-direction:column}
+  }
+
 </style>
 </head>
-<body>
+<body class="login-page">
 
 <div id="login-screen">
   <div class="login-deco"></div>
@@ -112,6 +184,128 @@
     <div class="auth-switch">Already have an account? <a id="toLogin">Sign in</a></div>
   </div>
 
+</div>
+
+
+<!-- ════════ TWO-FACTOR AUTHENTICATION MODAL ════════ -->
+<div class="pf-overlay" id="twoFactorOverlay">
+  <div class="pf-card">
+
+    <!-- Returning administrator: normal TOTP verification -->
+    <div id="twofaVerifyView">
+      <div class="pf-title">Two-Factor Authentication</div>
+      <div class="pf-sub">Enter the 6-digit code shown in your Microsoft Authenticator app.</div>
+      <div id="twofaMsg" class="auth-msg"></div>
+
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">Authenticator code</div>
+        <input class="inp filled twofa-code" id="twofaCode"
+          type="text" inputmode="numeric" autocomplete="one-time-code"
+          maxlength="6" placeholder="000000">
+      </div>
+
+      <div class="twofa-help">
+        Open Microsoft Authenticator and use the current code under your BarangAI account.
+        Codes change automatically, so use the newest one shown.
+      </div>
+
+      <div class="twofa-actions">
+        <button class="btn btn-primary" id="twofaVerifyBtn">Verify &amp; Continue →</button>
+        <button class="btn" id="twofaCancelBtn"
+          style="border:1px solid #e3e8ef;background:#fff;">Cancel</button>
+      </div>
+
+      <button class="twofa-linkbtn" id="useRecoveryBtn" type="button">
+        Use a recovery code instead
+      </button>
+    </div>
+
+    <!-- Recovery-code login -->
+    <div id="twofaRecoveryLoginView" class="auth-hidden">
+      <div class="pf-title">Use a recovery code</div>
+      <div class="pf-sub">
+        Enter one of the single-use recovery codes you saved when 2FA was enabled.
+      </div>
+      <div id="recoveryLoginMsg" class="auth-msg"></div>
+
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">Recovery code</div>
+        <input class="inp filled" id="recoveryLoginCode"
+          type="text" autocomplete="off" maxlength="11"
+          placeholder="ABCDE-12345"
+          style="text-transform:uppercase;font-family:monospace;font-weight:700;letter-spacing:1px;">
+      </div>
+
+      <div class="twofa-warning">
+        Each recovery code works only once. After a successful login, that code is permanently marked as used.
+      </div>
+
+      <div class="twofa-actions">
+        <button class="btn btn-primary" id="recoveryLoginBtn">
+          Use Recovery Code &amp; Continue →
+        </button>
+        <button class="btn" id="backToAuthenticatorBtn"
+          style="border:1px solid #e3e8ef;background:#fff;">
+          Back
+        </button>
+      </div>
+    </div>
+
+    <!-- First-time administrator enrollment -->
+    <div id="twofaEnrollView" class="auth-hidden">
+      <div class="pf-title">Secure your administrator account</div>
+      <div class="pf-sub">Two-factor authentication is required before you can access the BarangAI dashboard.</div>
+      <div id="enrollMsg" class="auth-msg"></div>
+
+      <div class="twofa-help">
+        In Microsoft Authenticator, tap <strong>+</strong> → <strong>Other account</strong> →
+        <strong>Enter code manually</strong>. Use the account name and setup key shown below.
+      </div>
+
+      <div class="pf-kv"><span>Issuer</span><span id="enrollIssuer">BarangAI</span></div>
+      <div class="pf-kv"><span>Account</span><span id="enrollAccount">—</span></div>
+
+      <div class="label" style="margin-top:14px;">Manual setup key</div>
+      <div class="twofa-key" id="enrollSetupKey">Generating…</div>
+
+      <div class="twofa-warning">
+        Keep this setup key private. Anyone with this key could generate your authentication codes.
+      </div>
+
+      <div class="field" style="margin-top:14px;">
+        <div class="label">Current 6-digit code</div>
+        <input class="inp filled twofa-code" id="enrollCode"
+          type="text" inputmode="numeric" autocomplete="one-time-code"
+          maxlength="6" placeholder="000000">
+      </div>
+
+      <div class="twofa-actions">
+        <button class="btn btn-primary" id="enrollVerifyBtn">Verify &amp; Enable 2FA →</button>
+        <button class="btn" id="enrollCancelBtn"
+          style="border:1px solid #e3e8ef;background:#fff;">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Recovery codes shown once after successful enrollment -->
+    <div id="twofaRecoveryView" class="auth-hidden">
+      <div class="pf-title">Save your recovery codes</div>
+      <div class="pf-sub">Two-factor authentication is enabled. Save these codes before continuing.</div>
+
+      <div class="twofa-warning">
+        Each recovery code can be used only once if you lose access to Microsoft Authenticator.
+        BarangAI stores only hashed copies and will not show these exact codes again.
+      </div>
+
+      <div class="recovery-grid" id="recoveryCodeList"></div>
+
+      <button class="btn btn-primary"
+        style="width:100%;justify-content:center;padding:10px;"
+        id="recoverySavedBtn">
+        I have saved my recovery codes
+      </button>
+    </div>
+
+  </div>
 </div>
 
 <!-- ════════ PROFILE SETUP MODAL (first login — forced) ════════ -->
@@ -193,53 +387,404 @@ $('toLogin').addEventListener('click', function(){
   $('loginCard').classList.remove('auth-hidden');
 });
 
-/* ════════ LOGIN + PROFILE GATE ════════ */
+/* ════════ LOGIN + 2FA + PROFILE GATE ════════ */
 async function doLogin(){
   clearMsg('loginMsg');
+
   var id = $('loginId').value.trim();
   var pw = $('loginPw').value;
-  if (!id || !pw){ showMsg('loginMsg','err','Enter your username/email and password.'); return; }
+
+  if (!id || !pw){
+    showMsg('loginMsg','err','Enter your username/email and password.');
+    return;
+  }
+
   $('signInBtn').disabled = true;
   $('signInBtn').textContent = 'Signing in…';
+
   try {
     var res = await fetch(AUTH + '?action=login', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       credentials:'include',
       body: JSON.stringify({
-    identifier: id,
-    password: pw,
-    remember_me: document.querySelector('input[type="checkbox"]').checked
-})
+        identifier:id,
+        password:pw,
+        remember_me:document.querySelector('#loginCard input[type="checkbox"]').checked
+      })
     });
+
     var data = await res.json();
+
     if (!data.ok){
       showMsg('loginMsg','err', data.error || 'Login failed.');
       resetSignIn();
       return;
     }
 
-    // where to land after the gate
-    _redirectTo = data.role === 'admin' ? 'index.html' : 'resident.html';
-
-    // Residents skip the profile gate entirely
+    // Residents are already fully authenticated by the backend.
     if (data.role !== 'admin'){
-      go();
+      continueAfterAuthentication(data);
       return;
     }
 
-    // Admin gate: first login (0) = forced setup, else = confirm screen
-    if (Number(data.profile_completed) === 0){
-      await openSetup();
-    } else {
-      openConfirm(data.name, data.role, data.last_login);
+    // Admin password is only factor #1.
+    if (data.requires_2fa === true){
+
+      if (data.enrollment_required === true){
+        await openTwoFactorEnrollment();
+      } else {
+        openTwoFactorVerification();
+      }
+
+      return;
     }
+
+    // Defensive fallback if backend ever returns an already-authenticated admin.
+    continueAfterAuthentication(data);
+
   } catch(e){
-    showMsg('loginMsg','err','Cannot reach server. Is Apache & MySQL running?');
+    showMsg('loginMsg','err','Cannot reach the BarangAI server. Please try again.');
     resetSignIn();
   }
 }
-function resetSignIn(){ $('signInBtn').disabled=false; $('signInBtn').textContent='Sign In →'; }
-function go(){ location.href = _redirectTo; }
+
+function resetSignIn(){
+  $('signInBtn').disabled=false;
+  $('signInBtn').textContent='Sign In →';
+}
+
+function go(){
+  location.href = _redirectTo;
+}
+
+function continueAfterAuthentication(data){
+  _redirectTo = data.role === 'admin' ? 'index.html' : 'resident.html';
+
+  if (data.role !== 'admin'){
+    go();
+    return;
+  }
+
+  // Existing profile gate remains unchanged, but only runs AFTER 2FA succeeds.
+  if (Number(data.profile_completed) === 0){
+    openSetup();
+  } else {
+    openConfirm(data.name, data.role, data.last_login);
+  }
+}
+
+/* ── Normal 2FA verification for enrolled admins ── */
+function openTwoFactorVerification(){
+  clearMsg('twofaMsg');
+  $('twofaCode').value = '';
+  $('twofaEnrollView').classList.add('auth-hidden');
+  $('twofaRecoveryView').classList.add('auth-hidden');
+  $('twofaRecoveryLoginView').classList.add('auth-hidden');
+  $('twofaVerifyView').classList.remove('auth-hidden');
+  $('twoFactorOverlay').classList.add('open');
+
+  setTimeout(function(){ $('twofaCode').focus(); }, 80);
+}
+
+async function verifyTwoFactorLogin(){
+  clearMsg('twofaMsg');
+
+  var code = $('twofaCode').value.replace(/\D/g,'');
+
+  if (code.length !== 6){
+    showMsg('twofaMsg','err','Enter exactly 6 digits from Microsoft Authenticator.');
+    return;
+  }
+
+  $('twofaVerifyBtn').disabled = true;
+  $('twofaVerifyBtn').textContent = 'Verifying…';
+
+  try {
+    var res = await fetch(AUTH + '?action=verify_2fa_login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body:JSON.stringify({code:code})
+    });
+
+    var data = await res.json();
+
+    if (!data.ok || !data.authenticated){
+      var extra = data.attempts_remaining !== undefined
+        ? ' Attempts remaining: ' + data.attempts_remaining + '.'
+        : '';
+      showMsg('twofaMsg','err',(data.error || 'Verification failed.') + extra);
+      $('twofaVerifyBtn').disabled=false;
+      $('twofaVerifyBtn').textContent='Verify & Continue →';
+      $('twofaCode').select();
+      return;
+    }
+
+    $('twoFactorOverlay').classList.remove('open');
+    $('twofaVerifyBtn').disabled=false;
+    $('twofaVerifyBtn').textContent='Verify & Continue →';
+    resetSignIn();
+
+    continueAfterAuthentication(data);
+
+  } catch(e){
+    showMsg('twofaMsg','err','Cannot verify the authenticator code right now.');
+    $('twofaVerifyBtn').disabled=false;
+    $('twofaVerifyBtn').textContent='Verify & Continue →';
+  }
+}
+
+
+/* ── Recovery-code login for enrolled admins ── */
+function openRecoveryLogin(){
+  clearMsg('recoveryLoginMsg');
+  $('recoveryLoginCode').value = '';
+  $('twofaVerifyView').classList.add('auth-hidden');
+  $('twofaEnrollView').classList.add('auth-hidden');
+  $('twofaRecoveryView').classList.add('auth-hidden');
+  $('twofaRecoveryLoginView').classList.remove('auth-hidden');
+
+  setTimeout(function(){ $('recoveryLoginCode').focus(); }, 80);
+}
+
+function backToAuthenticator(){
+  clearMsg('twofaMsg');
+  $('twofaRecoveryLoginView').classList.add('auth-hidden');
+  $('twofaVerifyView').classList.remove('auth-hidden');
+  $('twofaCode').value = '';
+  setTimeout(function(){ $('twofaCode').focus(); }, 80);
+}
+
+async function verifyRecoveryLogin(){
+  clearMsg('recoveryLoginMsg');
+
+  var recoveryCode = $('recoveryLoginCode').value.trim();
+
+  if (!recoveryCode){
+    showMsg('recoveryLoginMsg','err','Enter one of your saved recovery codes.');
+    return;
+  }
+
+  $('recoveryLoginBtn').disabled = true;
+  $('recoveryLoginBtn').textContent = 'Checking…';
+
+  try {
+    var res = await fetch(AUTH + '?action=verify_2fa_recovery', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body:JSON.stringify({recovery_code:recoveryCode})
+    });
+
+    var data = await res.json();
+
+    if (!data.ok || !data.authenticated){
+      var extra = data.attempts_remaining !== undefined
+        ? ' Attempts remaining: ' + data.attempts_remaining + '.'
+        : '';
+
+      showMsg(
+        'recoveryLoginMsg',
+        'err',
+        (data.error || 'Recovery-code login failed.') + extra
+      );
+
+      $('recoveryLoginBtn').disabled = false;
+      $('recoveryLoginBtn').textContent = 'Use Recovery Code & Continue →';
+      $('recoveryLoginCode').select();
+      return;
+    }
+
+    $('recoveryLoginCode').value = '';
+    $('twoFactorOverlay').classList.remove('open');
+    $('recoveryLoginBtn').disabled = false;
+    $('recoveryLoginBtn').textContent = 'Use Recovery Code & Continue →';
+    resetSignIn();
+
+    if (
+      data.recovery_codes_remaining !== undefined &&
+      Number(data.recovery_codes_remaining) <= 2
+    ){
+      sessionStorage.setItem(
+        'barangaiRecoveryWarning',
+        'Only ' + data.recovery_codes_remaining +
+        ' unused 2FA recovery code(s) remain.'
+      );
+    }
+
+    continueAfterAuthentication(data);
+
+  } catch(e){
+    showMsg(
+      'recoveryLoginMsg',
+      'err',
+      'Cannot verify the recovery code right now.'
+    );
+    $('recoveryLoginBtn').disabled = false;
+    $('recoveryLoginBtn').textContent = 'Use Recovery Code & Continue →';
+  }
+}
+
+/* ── First-time admin enrollment ── */
+async function openTwoFactorEnrollment(){
+  clearMsg('enrollMsg');
+
+  $('twofaVerifyView').classList.add('auth-hidden');
+  $('twofaRecoveryView').classList.add('auth-hidden');
+  $('twofaEnrollView').classList.remove('auth-hidden');
+
+  $('enrollSetupKey').textContent = 'Generating…';
+  $('enrollAccount').textContent = '—';
+  $('enrollIssuer').textContent = 'BarangAI';
+  $('enrollCode').value = '';
+  $('twoFactorOverlay').classList.add('open');
+
+  try {
+    var res = await fetch(AUTH + '?action=begin_2fa_enrollment', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body:JSON.stringify({})
+    });
+
+    var data = await res.json();
+
+    if (!data.ok || !data.enrollment_ready){
+      showMsg('enrollMsg','err',data.error || 'Could not begin 2FA setup.');
+      $('enrollSetupKey').textContent = 'Unavailable';
+      return;
+    }
+
+    $('enrollIssuer').textContent = data.issuer || 'BarangAI';
+    $('enrollAccount').textContent = data.account || '—';
+    $('enrollSetupKey').textContent = data.setup_key || '—';
+
+  } catch(e){
+    showMsg('enrollMsg','err','Could not generate the authenticator setup key.');
+    $('enrollSetupKey').textContent = 'Unavailable';
+  }
+}
+
+async function verifyAndActivateEnrollment(){
+  clearMsg('enrollMsg');
+
+  var code = $('enrollCode').value.replace(/\D/g,'');
+
+  if (code.length !== 6){
+    showMsg('enrollMsg','err','Enter exactly 6 digits from Microsoft Authenticator.');
+    return;
+  }
+
+  $('enrollVerifyBtn').disabled=true;
+  $('enrollVerifyBtn').textContent='Verifying…';
+
+  try {
+    // 1) Prove Microsoft Authenticator and BarangAI have the same secret.
+    var verifyRes = await fetch(AUTH + '?action=verify_2fa_enrollment_code', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body:JSON.stringify({code:code})
+    });
+
+    var verifyData = await verifyRes.json();
+
+    if (!verifyData.ok || !verifyData.verification_passed){
+      showMsg('enrollMsg','err',verifyData.error || 'Authenticator code is invalid or expired.');
+      $('enrollVerifyBtn').disabled=false;
+      $('enrollVerifyBtn').textContent='Verify & Enable 2FA →';
+      $('enrollCode').select();
+      return;
+    }
+
+    $('enrollVerifyBtn').textContent='Enabling 2FA…';
+
+    // 2) Encrypt/store the secret and generate one-time recovery codes.
+    var activateRes = await fetch(AUTH + '?action=activate_2fa', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body:JSON.stringify({})
+    });
+
+    var activateData = await activateRes.json();
+
+    if (!activateData.ok || !activateData.two_factor_enabled){
+      showMsg('enrollMsg','err',activateData.error || 'Could not activate 2FA.');
+      $('enrollVerifyBtn').disabled=false;
+      $('enrollVerifyBtn').textContent='Verify & Enable 2FA →';
+      return;
+    }
+
+    showRecoveryCodes(activateData.recovery_codes || []);
+
+  } catch(e){
+    showMsg('enrollMsg','err','Could not complete 2FA enrollment.');
+    $('enrollVerifyBtn').disabled=false;
+    $('enrollVerifyBtn').textContent='Verify & Enable 2FA →';
+  }
+}
+
+function showRecoveryCodes(codes){
+  $('twofaEnrollView').classList.add('auth-hidden');
+  $('twofaVerifyView').classList.add('auth-hidden');
+  $('twofaRecoveryView').classList.remove('auth-hidden');
+
+  var list = $('recoveryCodeList');
+  list.innerHTML = '';
+
+  codes.forEach(function(code){
+    var div = document.createElement('div');
+    div.className = 'recovery-code';
+    div.textContent = code;
+    list.appendChild(div);
+  });
+}
+
+async function cancelTwoFactor(){
+  try {
+    await fetch(AUTH + '?action=logout', {credentials:'include'});
+  } catch(e){}
+
+  $('twoFactorOverlay').classList.remove('open');
+  $('twofaCode').value = '';
+  $('recoveryLoginCode').value = '';
+  $('enrollCode').value = '';
+  $('loginPw').value = '';
+  resetSignIn();
+}
+
+$('useRecoveryBtn').addEventListener('click', openRecoveryLogin);
+$('backToAuthenticatorBtn').addEventListener('click', backToAuthenticator);
+$('recoveryLoginBtn').addEventListener('click', verifyRecoveryLogin);
+$('recoveryLoginCode').addEventListener('keydown', function(e){
+  if (e.key === 'Enter') verifyRecoveryLogin();
+});
+
+$('twofaVerifyBtn').addEventListener('click', verifyTwoFactorLogin);
+$('twofaCode').addEventListener('keydown', function(e){
+  if (e.key === 'Enter') verifyTwoFactorLogin();
+});
+
+$('twofaCancelBtn').addEventListener('click', cancelTwoFactor);
+$('enrollCancelBtn').addEventListener('click', cancelTwoFactor);
+
+$('enrollVerifyBtn').addEventListener('click', verifyAndActivateEnrollment);
+$('enrollCode').addEventListener('keydown', function(e){
+  if (e.key === 'Enter') verifyAndActivateEnrollment();
+});
+
+$('recoverySavedBtn').addEventListener('click', function(){
+  // activate_2fa intentionally clears authentication state.
+  // The admin signs in again, now using password + Authenticator code.
+  $('twoFactorOverlay').classList.remove('open');
+  $('twofaRecoveryView').classList.add('auth-hidden');
+  $('twofaVerifyView').classList.remove('auth-hidden');
+  $('loginPw').value = '';
+  showMsg('loginMsg','ok','2FA enabled successfully. Sign in again using your password and Microsoft Authenticator code.');
+  resetSignIn();
+});
 
 /* ---- Confirm modal (returning admin) ---- */
 function openConfirm(name, role, lastLogin){
