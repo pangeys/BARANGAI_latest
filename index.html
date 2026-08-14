@@ -26,19 +26,131 @@
         <div class="user-role">CS - 3IS2</div>
       </div>
     </div>
-    <div class="nav-section">Main</div>
-    <div class="nav-item active"       onclick="showScreen('dashboard',this)"><span class="nav-icon">▦</span> Dashboard</div>
-    <div class="nav-item"              onclick="showScreen('complaints',this)"><span class="nav-icon">📋</span> Complaints</div>
-    <div class="nav-item"              onclick="showScreen('priority',this)"><span class="nav-icon">⚡</span> Priority Queue</div>
-    <div class="nav-item"              onclick="showScreen('cases',this)"><span class="nav-icon">📁</span> Case Tracking</div>
-    <div class="nav-item"              onclick="showScreen('ai',this)"><span class="nav-icon">🤖</span> AI Results</div>
-    <div class="nav-section">Admin</div>
-    <div class="nav-item"              onclick="showScreen('reports',this)"><span class="nav-icon">📈</span> Reports</div>
-    <div class="nav-item"              onclick="showScreen('users',this)"><span class="nav-icon">👥</span> Users</div>
-    <div class="nav-item"              onclick="showScreen('notifs',this)"><span class="nav-icon">🔔</span> Notifications</div>
-    <div class="nav-item"              onclick="showScreen('officers',this)"><span class="nav-icon">👮</span> Officers</div>
-    <div id="sidebar-footer">
-      <div class="logout-btn" onclick="doLogout()">⬅ Sign Out</div>
+    <div class="nav-section" id="admin-main-label">Main</div>
+
+      <!-- SUPER ADMIN NAVIGATION -->
+      <div id="super-admin-nav" style="display:none;">
+
+        <div class="nav-section">System</div>
+
+        <div class="nav-item active"
+            data-sa-screen="dashboard"
+            onclick="showScreen('dashboard',this)">
+          <span class="nav-icon">▦</span> Dashboard
+        </div>
+
+        <div class="nav-item"
+            data-sa-screen="barangays"
+            onclick="showScreen('barangays',this)">
+          <span class="nav-icon">🏘️</span> Barangays
+        </div>
+
+        <div class="nav-item"
+            data-sa-screen="complaints"
+            onclick="showScreen('complaints',this)">
+          <span class="nav-icon">📋</span> Complaints
+        </div>
+
+        <div class="nav-item"
+            data-sa-screen="officers"
+            onclick="showScreen('officers',this)">
+          <span class="nav-icon">👮</span> Officers
+        </div>
+
+        <div class="nav-item"
+            data-sa-screen="users"
+            onclick="showScreen('users',this)">
+          <span class="nav-icon">👥</span> Users &amp; Roles
+        </div>
+
+        <div class="nav-section">System Management</div>
+
+        <div class="nav-item"
+            data-sa-screen="reports"
+            onclick="showScreen('reports',this)">
+          <span class="nav-icon">📈</span> Reports &amp; Analytics
+        </div>
+
+        <div class="nav-item"
+            data-sa-screen="ai"
+            onclick="showScreen('ai',this)">
+          <span class="nav-icon">🤖</span> AI Model
+        </div>
+
+        <div class="nav-item"
+            data-sa-screen="settings"
+            onclick="showScreen('settings',this)">
+          <span class="nav-icon">⚙️</span> System Settings
+        </div>
+
+      </div>
+
+      <!-- NORMAL BARANGAY ADMIN NAVIGATION -->
+      <div class="nav-item active"
+          data-admin-nav="1"
+          onclick="showScreen('dashboard',this)">
+        <span class="nav-icon">▦</span> Dashboard
+      </div>
+
+      <div class="nav-item"
+          data-admin-nav="1"
+          onclick="showScreen('complaints',this)">
+        <span class="nav-icon">📋</span> Complaints
+      </div>
+
+      <div class="nav-item"
+          data-admin-nav="1"
+          onclick="showScreen('priority',this)">
+        <span class="nav-icon">⚡</span> Priority Queue
+      </div>
+
+      <div class="nav-item"
+          data-admin-nav="1"
+          onclick="showScreen('cases',this)">
+        <span class="nav-icon">📁</span> Case Tracking
+      </div>
+
+      <div class="nav-item"
+          data-admin-nav="1"
+          onclick="showScreen('ai',this)">
+        <span class="nav-icon">🤖</span> AI Results
+      </div>
+
+      <div class="nav-section" data-admin-nav="1">Admin</div>
+
+      <div class="nav-item"
+          data-admin-nav="1"
+          onclick="showScreen('reports',this)">
+        <span class="nav-icon">📈</span> Reports
+      </div>
+
+      <div class="nav-item"
+          data-admin-nav="1"
+          onclick="showScreen('users',this)">
+        <span class="nav-icon">👥</span> Users
+      </div>
+
+      <div class="nav-item"
+          data-admin-nav="1"
+          onclick="showScreen('notifs',this)">
+        <span class="nav-icon">🔔</span> Notifications
+      </div>
+
+      <div class="nav-item"
+          data-admin-nav="1"
+          onclick="showScreen('officers',this)">
+        <span class="nav-icon">👮</span> Officers
+      </div>
+
+      <div class="nav-item"
+          data-admin-nav="1"
+          onclick="showScreen('settings',this)">
+        <span class="nav-icon">⚙️</span> Settings
+      </div>
+      <div id="sidebar-footer">
+      <div class="logout-btn" onclick="doLogout()">⬅ Sign Out
+
+      </div>
     </div>
   </div>
 
@@ -46,8 +158,27 @@
   <div id="main">
     <div id="topbar">
       <div id="topbar-title">Dashboard</div>
+              <!-- SUPER ADMIN GLOBAL CONTEXT -->
+        <div id="super-admin-context"
+            style="display:none;margin-left:18px;align-items:center;gap:8px;">
+
+          <span style="font-size:11px;color:var(--text3);font-weight:600;">
+            Barangay:
+          </span>
+
+          <select
+            class="inp sel"
+            id="global-barangay-select"
+            style="height:32px;padding:5px 30px 5px 10px;font-size:11px;min-width:190px;">
+            <option value="">All Barangays</option>
+          </select>
+
+        </div>
       <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-        <button class="btn btn-primary btn-sm" onclick="showModal('submitModal')">+ Submit Complaint</button>
+        <button
+        class="btn btn-primary btn-sm"
+        id="topbar-submit-complaint"
+        onclick="showModal('submitModal')">+ Submit Complaint</button>
         <div class="topbar-action" onclick="showScreen('notifs',null)" style="position:relative;">🔔<span id="notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--red,#dc2626);color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;">0</span></div>
         <div class="topbar-action" onclick="openMyAccount()" title="My account">👤</div>
       </div>
@@ -126,6 +257,101 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SUPER ADMIN — BARANGAYS
+═══════════════════════════════════════════════════ -->
+<div id="screen-barangays" class="screen">
+
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
+
+    <div>
+      <div class="page-title">Barangays</div>
+      <div class="page-sub">
+        Manage barangays registered in the BarangAI system.
+      </div>
+    </div>
+
+    <button
+      class="btn btn-primary"
+      id="sa-add-barangay-btn"
+      type="button">
+      + Add Barangay
+    </button>
+
+  </div>
+
+  <div class="stats-grid">
+
+    <div class="stat-card">
+      <div class="stat-label">Total Barangays</div>
+      <div class="stat-value" id="sa-brgy-total">0</div>
+      <div class="stat-delta">Registered barangays</div>
+    </div>
+
+    <div class="stat-card green">
+      <div class="stat-label">Active</div>
+      <div class="stat-value"
+           id="sa-brgy-active"
+           style="color:var(--green)">0</div>
+      <div class="stat-delta">Currently active</div>
+    </div>
+
+    <div class="stat-card amber">
+      <div class="stat-label">Inactive</div>
+      <div class="stat-value"
+           id="sa-brgy-inactive"
+           style="color:var(--amber)">0</div>
+      <div class="stat-delta">Temporarily inactive</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-label">Suspended</div>
+      <div class="stat-value"
+           id="sa-brgy-suspended">0</div>
+      <div class="stat-delta">Access restricted</div>
+    </div>
+
+  </div>
+
+  <div class="card">
+
+    <div class="card-header">
+      <div>
+        <div class="card-title">Barangay Directory</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px;">
+          Global barangay records available to the Super Administrator.
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body np">
+
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Barangay</th>
+            <th>Municipality / City</th>
+            <th>Administrator Email</th>
+            <th>Status</th>
+            <th style="width:120px;">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody id="sa-barangays-tbody">
+          <tr>
+            <td colspan="5"
+                style="text-align:center;padding:24px;color:var(--text3);">
+              Loading barangays…
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+
 </div>
 
 <!-- ═══════════════════════════════════════════════════
@@ -458,14 +684,383 @@
     <div class="card-body" id="notifs-list"></div>
   </div>
 </div>
+<!-- ═══════════════════════════════════════════════════
+     SETTINGS
+═══════════════════════════════════════════════════ -->
+<div id="screen-settings" class="screen">
 
-<!-- ═══════════════════════════════════════════════════
-     SETTINGS  ← UPDATED: added Officers tab + panel
-═══════════════════════════════════════════════════ -->
-<!-- ═══════════════════════════════════════════════════
-     SETTINGS  — replace the existing <div id="screen-settings"> block
-     Officers tab panel is UNTOUCHED (copied as-is from original)
-═══════════════════════════════════════════════════ -->
+  <div class="page-header">
+    <div class="page-title">System Settings</div>
+    <div class="page-sub">
+      Manage barangay configuration, complaint settings, AI options, and configuration audit records.
+    </div>
+  </div>
+
+  <!-- SETTINGS TABS -->
+  <div class="tabs" id="settings-tabs" style="margin-bottom:16px;">
+    <div
+      class="tab active"
+      onclick="switchSettingsTab('general',this)">
+      General
+    </div>
+
+    <div
+      class="tab"
+      onclick="switchSettingsTab('categories',this)">
+      Categories
+    </div>
+
+    <div
+      class="tab"
+      onclick="switchSettingsTab('ai',this)">
+      AI Model
+    </div>
+
+    <div
+      class="tab"
+      onclick="switchSettingsTab('audit',this)">
+      Audit Log
+    </div>
+
+    <div
+      class="tab"
+      onclick="switchSettingsTab('officers',this)">
+      Officers
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════
+       GENERAL SETTINGS
+  ═══════════════════════════════════════ -->
+  <div id="settings-panel-general">
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">General Configuration</div>
+      </div>
+
+      <div class="card-body">
+
+        <div class="form-row full">
+          <div class="field">
+            <div class="label">System Name</div>
+            <input
+              class="inp filled"
+              value="BICTS – Barangay Intelligent Case Tracking System"
+              disabled>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="field">
+            <div class="label">
+              Barangay Name <span>*</span>
+            </div>
+            <input
+              class="inp"
+              id="cfg-barangay-name"
+              placeholder="Barangay name">
+          </div>
+
+          <div class="field">
+            <div class="label">Municipality / City</div>
+            <input
+              class="inp"
+              id="cfg-municipality"
+              placeholder="Municipality or city">
+          </div>
+        </div>
+
+        <div class="form-row full">
+          <div class="field">
+            <div class="label">Administrator Email</div>
+            <input
+              class="inp"
+              id="cfg-admin-email"
+              type="email"
+              placeholder="admin@example.com">
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Complaint &amp; AI Behavior</div>
+      </div>
+
+      <div class="card-body">
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-name">
+              Automatic Classification
+            </div>
+            <div class="setting-desc">
+              Automatically classify newly submitted complaints using the configured NLP model.
+            </div>
+          </div>
+
+          <div
+            class="toggle off"
+            id="tog-auto-classify"
+            onclick="toggleSetting(this)">
+          </div>
+        </div>
+
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-name">
+              Allow Anonymous Complaints
+            </div>
+            <div class="setting-desc">
+              Permit complainants to submit a complaint without providing their name.
+            </div>
+          </div>
+
+          <div
+            class="toggle off"
+            id="tog-allow-anonymous"
+            onclick="toggleSetting(this)">
+          </div>
+        </div>
+
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-name">
+              Confidence Flag
+            </div>
+            <div class="setting-desc">
+              Flag classifications that may require closer review.
+            </div>
+          </div>
+
+          <div
+            class="toggle off"
+            id="tog-confidence-flag"
+            onclick="toggleSetting(this)">
+          </div>
+        </div>
+
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-name">
+              Human Validation
+            </div>
+            <div class="setting-desc">
+              Require manual validation of supported AI classification results.
+            </div>
+          </div>
+
+          <div
+            class="toggle off"
+            id="tog-human-validation"
+            onclick="toggleSetting(this)">
+          </div>
+        </div>
+
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-name">
+              BiLSTM Fallback
+            </div>
+            <div class="setting-desc">
+              Enable the existing fallback option where supported by the backend configuration.
+            </div>
+          </div>
+
+          <div
+            class="toggle off"
+            id="tog-bilstm-fallback"
+            onclick="toggleSetting(this)">
+          </div>
+        </div>
+
+
+        <div
+          id="settings-msg"
+          style="font-size:12px;min-height:18px;margin-top:14px;">
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+          <button
+            class="btn btn-primary"
+            id="settings-save-btn"
+            onclick="saveSettings()">
+            Save Settings
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ═══════════════════════════════════════
+       CATEGORIES
+  ═══════════════════════════════════════ -->
+  <div
+    id="settings-panel-categories"
+    style="display:none;">
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            Complaint Categories
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px;">
+            Categories currently used by the complaint classification system.
+          </div>
+        </div>
+      </div>
+
+      <div class="card-body np">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Category</th>
+              <th>Color</th>
+              <th style="text-align:center;">Complaints</th>
+              <th style="text-align:center;">Avg. Confidence</th>
+            </tr>
+          </thead>
+
+          <tbody id="categories-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ═══════════════════════════════════════
+       AI MODEL
+  ═══════════════════════════════════════ -->
+  <div
+    id="settings-panel-ai"
+    style="display:none;">
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            AI Model Performance
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px;">
+            Current model performance information already available in BarangAI.
+          </div>
+        </div>
+
+        <span class="badge b-blue">
+          SVM
+        </span>
+      </div>
+
+      <div class="card-body">
+
+        <div
+          class="alert alert-info"
+          style="margin-bottom:16px;">
+          🤖 The active classification model is
+          <strong>SVM</strong>.
+          This panel displays the performance data already configured in the system.
+        </div>
+
+        <div id="ai-settings-perf-bars"></div>
+
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ═══════════════════════════════════════
+       CONFIGURATION AUDIT
+  ═══════════════════════════════════════ -->
+  <div
+    id="settings-panel-audit"
+    style="display:none;">
+
+    <div class="card">
+
+      <div class="card-header">
+        <div>
+          <div class="card-title">
+            Configuration Audit Log
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px;">
+            Recorded changes to barangay and supported system configuration.
+          </div>
+        </div>
+      </div>
+
+      <div class="card-body np">
+
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>User</th>
+              <th>Action</th>
+              <th>Detail</th>
+              <th>IP Address</th>
+            </tr>
+          </thead>
+
+          <tbody id="settings-audit-tbody"></tbody>
+        </table>
+
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ═══════════════════════════════════════
+       OFFICERS SHORTCUT
+  ═══════════════════════════════════════ -->
+  <div
+    id="settings-panel-officers"
+    style="display:none;">
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          Officer Management
+        </div>
+      </div>
+
+      <div class="card-body">
+
+        <div class="alert alert-info">
+          👮 Officer management is available as a dedicated section in the BarangAI sidebar.
+        </div>
+
+        <button
+          class="btn btn-primary"
+          onclick="showScreen(
+            'officers',
+            document.querySelector('.nav-item[onclick*=officers]')
+          )">
+          Open Officer Management →
+        </button>
+
+      </div>
+    </div>
+
+  </div>
+
+</div>
 <div id="screen-officers" class="screen">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
     <div>
@@ -800,7 +1395,12 @@
       <div class="form-row full"><div class="field"><div class="label">Email <span>*</span></div><input class="inp" id="au_email" type="email"></div></div>
       <div class="form-row">
         <div class="field"><div class="label">Role</div>
-          <select class="inp sel" id="au_role"><option value="staff">Resident</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select>
+          <select class="inp sel" id="au_role">
+          <option value="resident">Resident</option>
+          <option value="staff">Staff</option>
+          <option value="viewer">Viewer</option>
+          <option value="admin">Admin</option>
+          </select>
         </div>
         <div class="field"><div class="label">Password <span>*</span></div><input class="inp" id="au_pw" type="password" placeholder="Min 8 chars, incl. uppercase, number, symbol"></div>
       </div>
@@ -857,24 +1457,351 @@
 
 <script>
 (async function(){
+
   let user = null;
+
   try {
-    const r = await fetch('api/auth.php?action=me');
+    const r = await fetch(
+      'api/auth.php?action=me',
+      { credentials:'include' }
+    );
+
     const d = await r.json();
     user = d.ok ? d.user : null;
+
   } catch(e) {}
 
-  if (!user) { location.href = 'login.html'; return; }
+  if (!user) {
+    location.href = 'login.html';
+    return;
+  }
+
+  /*
+   * index.html is an administrative interface.
+   * Residents must never remain here.
+   */
+  if (
+    user.role !== 'admin' &&
+    user.role !== 'super_admin'
+  ) {
+    location.href = 'resident.html';
+    return;
+  }
+
   window.CURRENT_USER = user;
 
-  document.getElementById('shell').style.display = '';
+  const shell = document.getElementById('shell');
 
-  // show name in sidebar
-  const nameEl = document.querySelector('#sidebar-user .user-name');
-  const roleEl = document.querySelector('#sidebar-user .user-role');
-  if (nameEl) nameEl.textContent = user.name;
-  if (roleEl) roleEl.textContent = user.role === 'admin' ? 'Barangay Admin' : 'Resident';
+  const nameEl =
+    document.querySelector('#sidebar-user .user-name');
+
+  const roleEl =
+    document.querySelector('#sidebar-user .user-role');
+
+  if (nameEl) {
+    nameEl.textContent = user.name || 'Administrator';
+  }
+
+  /*
+   * ════════════════════════════════════════
+   * SUPER ADMIN MODE
+   * ════════════════════════════════════════
+   */
+  if (user.role === 'super_admin') {
+
+    document.body.classList.add('super-admin-mode');
+
+    if (roleEl) {
+      roleEl.textContent = 'Super Administrator';
+    }
+
+    /*
+     * Hide the Barangay Admin navigation.
+     */
+    document
+      .querySelectorAll('[data-admin-nav="1"]')
+      .forEach(function(el){
+        el.style.display = 'none';
+      });
+
+    const adminMainLabel =
+      document.getElementById('admin-main-label');
+
+    if (adminMainLabel) {
+      adminMainLabel.style.display = 'none';
+    }
+
+    /*
+     * Display Super Admin navigation.
+     */
+    const saNav =
+      document.getElementById('super-admin-nav');
+
+    if (saNav) {
+      saNav.style.display = '';
+    }
+
+    /*
+     * Show global barangay context switcher.
+     */
+    const context =
+      document.getElementById('super-admin-context');
+
+    if (context) {
+      context.style.display = 'flex';
+    }
+
+    /*
+     * Global scope cannot submit a complaint yet.
+     * Later this becomes available only when one
+     * explicit barangay is selected.
+     */
+    const submitBtn =
+      document.getElementById('topbar-submit-complaint');
+
+    if (submitBtn) {
+      submitBtn.style.display = 'none';
+    }
+
+    /*
+     * Super Admin dashboard wording.
+     */
+    const dashSub =
+      document.querySelector(
+        '#screen-dashboard .page-sub'
+      );
+
+    if (dashSub) {
+      dashSub.textContent =
+        'System-wide overview across all BarangAI barangays.';
+    }
+
+    /*
+     * Load the global barangay directory from
+     * our Super Admin-only backend endpoint.
+     */
+    try {
+
+      const response = await fetch(
+        'api.php?type=barangays',
+        { credentials:'include' }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || 'Could not load barangays'
+        );
+      }
+
+      const barangays =
+        Array.isArray(data.barangays)
+          ? data.barangays
+          : [];
+
+      window.SUPER_ADMIN_BARANGAYS = barangays;
+
+      /*
+       * Populate global context selector.
+       */
+      const select =
+        document.getElementById(
+          'global-barangay-select'
+        );
+
+      if (select) {
+
+        barangays.forEach(function(brgy){
+
+          const option =
+            document.createElement('option');
+
+          option.value = String(brgy.id);
+
+          option.textContent =
+            brgy.name +
+            (
+              brgy.status !== 'Active'
+                ? ' — ' + brgy.status
+                : ''
+            );
+
+          select.appendChild(option);
+        });
+      }
+
+      /*
+       * Barangay summary cards.
+       */
+      const total =
+        barangays.length;
+
+      const active =
+        barangays.filter(
+          b => b.status === 'Active'
+        ).length;
+
+      const inactive =
+        barangays.filter(
+          b => b.status === 'Inactive'
+        ).length;
+
+      const suspended =
+        barangays.filter(
+          b => b.status === 'Suspended'
+        ).length;
+
+      document.getElementById(
+        'sa-brgy-total'
+      ).textContent = total;
+
+      document.getElementById(
+        'sa-brgy-active'
+      ).textContent = active;
+
+      document.getElementById(
+        'sa-brgy-inactive'
+      ).textContent = inactive;
+
+      document.getElementById(
+        'sa-brgy-suspended'
+      ).textContent = suspended;
+
+      /*
+       * Render Barangay Directory.
+       */
+      const tbody =
+        document.getElementById(
+          'sa-barangays-tbody'
+        );
+
+      if (tbody) {
+
+        if (!barangays.length) {
+
+          tbody.innerHTML =
+            '<tr>' +
+              '<td colspan="5" ' +
+              'style="text-align:center;padding:24px;color:var(--text3);">' +
+              'No barangays found.' +
+              '</td>' +
+            '</tr>';
+
+        } else {
+
+          tbody.innerHTML =
+            barangays.map(function(brgy){
+
+              const statusClass =
+                brgy.status === 'Active'
+                  ? 'b-green'
+                  : brgy.status === 'Inactive'
+                    ? 'b-gray'
+                    : 'b-amber';
+
+              return (
+                '<tr>' +
+
+                  '<td>' +
+                    '<strong>' +
+                      escapeSaHtml(brgy.name) +
+                    '</strong>' +
+                  '</td>' +
+
+                  '<td>' +
+                    escapeSaHtml(
+                      brgy.municipality || '—'
+                    ) +
+                  '</td>' +
+
+                  '<td>' +
+                    escapeSaHtml(
+                      brgy.admin_email || '—'
+                    ) +
+                  '</td>' +
+
+                  '<td>' +
+                    '<span class="badge ' +
+                    statusClass +
+                    '">' +
+                    escapeSaHtml(brgy.status) +
+                    '</span>' +
+                  '</td>' +
+
+                  '<td>' +
+                    '<button class="btn btn-ghost btn-sm" ' +
+                    'type="button" disabled>' +
+                    'Manage' +
+                    '</button>' +
+                  '</td>' +
+
+                '</tr>'
+              );
+            }).join('');
+        }
+      }
+
+    } catch(e) {
+
+      const tbody =
+        document.getElementById(
+          'sa-barangays-tbody'
+        );
+
+      if (tbody) {
+        tbody.innerHTML =
+          '<tr>' +
+            '<td colspan="5" ' +
+            'style="text-align:center;padding:24px;color:var(--red,#dc2626);">' +
+            'Could not load barangays.' +
+            '</td>' +
+          '</tr>';
+      }
+
+      console.error(
+        'Super Admin barangay load failed:',
+        e
+      );
+    }
+
+  /*
+   * ════════════════════════════════════════
+   * NORMAL BARANGAY ADMIN MODE
+   * ════════════════════════════════════════
+   */
+  } else {
+
+    if (roleEl) {
+      roleEl.textContent = 'Barangay Admin';
+    }
+
+    const saNav =
+      document.getElementById('super-admin-nav');
+
+    if (saNav) {
+      saNav.style.display = 'none';
+    }
+  }
+
+  shell.style.display = '';
+
 })();
+
+
+/*
+ * Escapes values returned by the API before
+ * inserting them into generated table HTML.
+ */
+function escapeSaHtml(value){
+
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 </script>
 </body>
 </html>

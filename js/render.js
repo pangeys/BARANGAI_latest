@@ -603,8 +603,22 @@ function fmtLogin(val) {
   return isNaN(d) ? val : d.toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 function roleBadge(role) {
-  const cls   = role === 'admin' ? 'b-blue' : role === 'staff' ? 'b-green' : 'b-gray';
-  const label = role === 'staff' ? 'resident' : role;
+  const cls =
+    role === 'admin'    ? 'b-blue'  :
+    role === 'resident' ? 'b-green' :
+    role === 'staff'    ? 'b-amber' :
+                          'b-gray';
+
+  const labels = {
+    admin: 'Administrator',
+    resident: 'Resident',
+    staff: 'Staff',
+    viewer: 'Viewer',
+    super_admin: 'Super Admin'
+  };
+
+  const label = labels[role] || role || '—';
+
   return '<span class="badge ' + cls + '">' + label + '</span>';
 }
 function statusBadgeUser(status) {
@@ -669,11 +683,30 @@ async function loadUsers() {
 }
 
 /* role cycles admin → staff → viewer → admin */
+/* role cycles admin → resident → staff → viewer → admin */
 async function cycleUserRole(id, current) {
-  const order = ['admin','staff','viewer'];
-  const next  = order[(order.indexOf(current) + 1) % order.length];
-  const r = await profileCall('update_user', { id, role: next });
-  if (!r.ok) { alert(r.error || 'Update failed.'); return; }
+  const order = ['admin', 'resident', 'staff', 'viewer'];
+
+  let currentIndex = order.indexOf(current);
+
+  // If an old/unknown role is encountered,
+  // safely start the cycle from admin.
+  if (currentIndex === -1) {
+    currentIndex = 0;
+  }
+
+  const next = order[(currentIndex + 1) % order.length];
+
+  const r = await profileCall('update_user', {
+    id,
+    role: next
+  });
+
+  if (!r.ok) {
+    alert(r.error || 'Update failed.');
+    return;
+  }
+
   loadUsers();
 }
 async function toggleUserStatus(id, current) {

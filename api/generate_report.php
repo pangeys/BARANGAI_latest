@@ -24,6 +24,22 @@ function report_error($message, $code = 400) {
     exit;
 }
 
+function is_super_admin_report($user) {
+    return (($user['role'] ?? '') === 'super_admin');
+}
+
+function is_barangay_admin_report($user) {
+    return (($user['role'] ?? '') === 'admin');
+}
+
+function is_administrative_report_user($user) {
+    return in_array(
+        ($user['role'] ?? ''),
+        ['admin', 'super_admin'],
+        true
+    );
+}
+
 function require_admin_report_session() {
     $user = $_SESSION['user'] ?? null;
 
@@ -31,13 +47,21 @@ function require_admin_report_session() {
         report_error('Authentication required', 401);
     }
 
-    if (($user['role'] ?? '') !== 'admin') {
+    if (!is_administrative_report_user($user)) {
         report_error('Administrator access required', 403);
     }
 
-    $barangayId = (int)($user['barangay_id'] ?? 0);
-    if ($barangayId <= 0) {
-        report_error('Administrator barangay is not configured', 403);
+    if (is_barangay_admin_report($user)) {
+        $barangayId = $user['barangay_id'] === null
+            ? null
+            : (int)$user['barangay_id'];
+
+        if ($barangayId === null || $barangayId <= 0) {
+            report_error(
+                'Administrator barangay is not configured',
+                403
+            );
+        }
     }
 
     return $user;
@@ -45,7 +69,12 @@ function require_admin_report_session() {
 
 // Require a fully authenticated admin before loading FPDF or querying data.
 $admin = require_admin_report_session();
-$barangay_id = (int)$admin['barangay_id'];
+
+$isSuperAdmin = is_super_admin_report($admin);
+
+$barangay_id = $admin['barangay_id'] === null
+    ? null
+    : (int)$admin['barangay_id'];
 
 require_once __DIR__ . '/fpdf.php';
 
@@ -77,10 +106,95 @@ if ($date_from !== '' && $date_to !== '' && $date_from > $date_to) {
 
 $db = getDB();
 
-// SECURITY: every report is restricted to the authenticated admin's barangay.
-$whereParts = ['barangay_id = ?'];
-$params     = [$barangay_id];
-$types      = 'i';
+/*
+ * Report scope:
+ *
+ * Barangay Admin:
+ *   always restricted to own barangay.
+ *
+ * Super Admin:
+ *   barangay_id > 0  => one selected barangay
+ *   scope=all        => all barangays
+ *
+ * Super Admin must explicitly choose one of those.
+ */
+
+$whereParts = [];
+$params     = [];
+$types      = '';
+
+if (!$isSuperAdmin) {
+
+    // Normal Barangay Admin — always own barangay.
+    $whereParts[] = 'barangay_id = ?';
+    $params[]     = $barangay_id;
+    $types       .= 'i';
+
+} else {
+
+    $requestedBarangayId = isset($_GET['barangay_id'])
+        ? (int)$_GET['barangay_id']
+        : 0;
+
+    $requestedScope = trim(
+        (string)($_GET['scope'] ?? '')
+    );
+
+    if ($requestedBarangayId > 0) {
+
+        /*
+         * Validate that the selected barangay actually exists.
+         */
+        $barangayCheck = $db->prepare(
+            'SELECT id
+               FROM barangays
+              WHERE id = ?
+              LIMIT 1'
+        );
+
+        $barangayCheck->bind_param(
+            'i',
+            $requestedBarangayId
+        );
+
+        $barangayCheck->execute();
+
+        $barangayExists = $barangayCheck
+            ->get_result()
+            ->fetch_assoc();
+
+        $barangayCheck->close();
+
+        if (!$barangayExists) {
+            $db->close();
+
+            report_error(
+                'Selected barangay does not exist',
+                422
+            );
+        }
+
+        $whereParts[] = 'barangay_id = ?';
+        $params[]     = $requestedBarangayId;
+        $types       .= 'i';
+
+    } elseif ($requestedScope === 'all') {
+
+        /*
+         * Explicit global Super Admin report.
+         * No barangay WHERE condition is added.
+         */
+
+    } else {
+
+        $db->close();
+
+        report_error(
+            'Super Admin must select a barangay or explicitly request scope=all',
+            422
+        );
+    }
+}
 
 if ($date_from !== '') {
     $whereParts[] = 'date_filed >= ?';
@@ -94,7 +208,9 @@ if ($date_to !== '') {
     $types .= 's';
 }
 
-$where = 'WHERE ' . implode(' AND ', $whereParts);
+$where = !empty($whereParts)
+    ? 'WHERE ' . implode(' AND ', $whereParts)
+    : '';
 
 // ── Fetch complaints ──
 $sql  = "SELECT * FROM complaints $where ORDER BY date_filed ASC";

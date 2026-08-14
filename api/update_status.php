@@ -18,6 +18,22 @@ function respond($data, $code = 200) {
     exit;
 }
 
+function isSuperAdmin($user) {
+    return (($user['role'] ?? '') === 'super_admin');
+}
+
+function isBarangayAdmin($user) {
+    return (($user['role'] ?? '') === 'admin');
+}
+
+function isAdministrativeUser($user) {
+    return in_array(
+        ($user['role'] ?? ''),
+        ['admin', 'super_admin'],
+        true
+    );
+}
+
 function require_admin_session() {
     $user = $_SESSION['user'] ?? null;
 
@@ -25,13 +41,20 @@ function require_admin_session() {
         respond(['error' => 'Authentication required'], 401);
     }
 
-    if (($user['role'] ?? '') !== 'admin') {
+    if (!isAdministrativeUser($user)) {
         respond(['error' => 'Administrator access required'], 403);
     }
 
-    $barangayId = (int)($user['barangay_id'] ?? 0);
-    if ($barangayId <= 0) {
-        respond(['error' => 'Administrator barangay is not configured'], 403);
+    if (isBarangayAdmin($user)) {
+        $barangayId = $user['barangay_id'] === null
+            ? null
+            : (int)$user['barangay_id'];
+
+        if ($barangayId === null || $barangayId <= 0) {
+            respond([
+                'error' => 'Administrator barangay is not configured'
+            ], 403);
+        }
     }
 
     return $user;
@@ -39,7 +62,12 @@ function require_admin_session() {
 
 // Require a fully authenticated admin before any database work.
 $admin = require_admin_session();
-$barangay_id = (int)$admin['barangay_id'];
+
+$isSuperAdmin = isSuperAdmin($admin);
+
+$barangay_id = $admin['barangay_id'] === null
+    ? null
+    : (int)$admin['barangay_id'];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respond(['error' => 'Method not allowed'], 405);
@@ -85,11 +113,79 @@ if ($status === 'Resolved' && !empty($body['resolved_at'])) {
 $status_badge = 'b-gray';
 
 if ($status === 'Resolved') {
-    $status_badge = 'b-green';
-} elseif ($status === 'In Progress') {
-    $status_badge = 'b-blue';
-} elseif ($status === 'For Hearing') {
-    $status_badge = 'b-amber';
+
+    if ($isSuperAdmin) {
+
+        $stmt = $db->prepare(
+            'UPDATE complaints
+                SET status = ?, status_badge = ?, resolved_at = ?
+              WHERE complaint_id = ?'
+        );
+
+        $stmt->bind_param(
+            'ssss',
+            $status,
+            $status_badge,
+            $resolved_at,
+            $complaint_id
+        );
+
+    } else {
+
+        $stmt = $db->prepare(
+            'UPDATE complaints
+                SET status = ?, status_badge = ?, resolved_at = ?
+              WHERE complaint_id = ?
+                AND barangay_id = ?'
+        );
+
+        $stmt->bind_param(
+            'ssssi',
+            $status,
+            $status_badge,
+            $resolved_at,
+            $complaint_id,
+            $barangay_id
+        );
+    }
+
+} else {
+
+    // Clear resolved_at if a previously resolved case
+    // is moved to another status.
+
+    if ($isSuperAdmin) {
+
+        $stmt = $db->prepare(
+            'UPDATE complaints
+                SET status = ?, status_badge = ?, resolved_at = NULL
+              WHERE complaint_id = ?'
+        );
+
+        $stmt->bind_param(
+            'sss',
+            $status,
+            $status_badge,
+            $complaint_id
+        );
+
+    } else {
+
+        $stmt = $db->prepare(
+            'UPDATE complaints
+                SET status = ?, status_badge = ?, resolved_at = NULL
+              WHERE complaint_id = ?
+                AND barangay_id = ?'
+        );
+
+        $stmt->bind_param(
+            'sssi',
+            $status,
+            $status_badge,
+            $complaint_id,
+            $barangay_id
+        );
+    }
 }
 
 $db = getDB();
@@ -144,8 +240,10 @@ $stmt->close();
 if ($affected < 1) {
     $db->close();
     respond([
-        'error' => 'Complaint not found in your barangay or no change was made'
-    ], 404);
+    'error' => $isSuperAdmin
+        ? 'Complaint not found or no change was made'
+        : 'Complaint not found in your barangay or no change was made'
+], 404);
 }
 
 $db->close();

@@ -9,6 +9,14 @@ function out($ok, $data = [], $code = 200) {
     echo json_encode(['ok' => $ok] + $data);
     exit;
 }
+function isAdministrativeRole($role) {
+    return in_array($role, ['admin', 'super_admin'], true);
+}
+function auditBarangayId($user) {
+    return $user['barangay_id'] === null
+        ? null
+        : (int)$user['barangay_id'];
+}
 
 $input  = json_decode(file_get_contents('php://input'), true) ?? [];
 $action = $_GET['action'] ?? ($input['action'] ?? '');
@@ -67,7 +75,7 @@ case 'login':
      * A correct admin password is only authentication factor #1.
      * Do NOT create $_SESSION['user'] yet.
      */
-    if ($user['role'] === 'admin') {
+    if (isAdministrativeRole($user['role'])) {
         unset($_SESSION['user']);
         unset($_SESSION['pending_2fa']);
 
@@ -82,7 +90,7 @@ case 'login':
         ];
 
         out(true, [
-            'role'                => 'admin',
+            'role'                => $user['role'],
             'name'                => $user['full_name'],
             'profile_completed'   => (int)($user['profile_completed'] ?? 0),
             'last_login'          => $prevLogin,
@@ -109,7 +117,9 @@ case 'login':
         'id'          => (int)$user['id'],
         'name'        => $user['full_name'],
         'role'        => $user['role'],
-        'barangay_id' => (int)$user['barangay_id'],
+        'barangay_id' => $user['barangay_id'] === null
+            ? null
+            : (int)$user['barangay_id'],
         'barangay'    => $brgyName,
     ];
 
@@ -138,7 +148,7 @@ case 'login':
 
     $uid = (int)$user['id'];
     $un  = $user['full_name'];
-    $bid = (int)$user['barangay_id'];
+    $bid = auditBarangayId($user);
 
     $alog->bind_param('isis', $uid, $un, $bid, $ip);
     $alog->execute();
@@ -216,7 +226,7 @@ case 'verify_2fa_login':
 
     if (
         !$user ||
-        $user['role'] !== 'admin' ||
+        !isAdministrativeRole($user['role']) ||
         $user['status'] !== 'active'
     ) {
         unset($_SESSION['pending_2fa']);
@@ -268,7 +278,7 @@ case 'verify_2fa_login':
             $ip = $_SERVER['REMOTE_ADDR'] ?? null;
             $uid = (int)$user['id'];
             $un = (string)$user['full_name'];
-            $bid = (int)$user['barangay_id'];
+            $bid = auditBarangayId($user);
 
             $alog = $db->prepare(
                 'INSERT INTO activity_log
@@ -337,7 +347,7 @@ case 'verify_2fa_login':
         $ip = $_SERVER['REMOTE_ADDR'] ?? null;
         $uid = (int)$user['id'];
         $un = (string)$user['full_name'];
-        $bid = (int)$user['barangay_id'];
+        $bid = auditBarangayId($user);
 
         $alog = $db->prepare(
             'INSERT INTO activity_log
@@ -381,7 +391,9 @@ case 'verify_2fa_login':
         'id'          => (int)$user['id'],
         'name'        => $user['full_name'],
         'role'        => $user['role'],
-        'barangay_id' => (int)$user['barangay_id'],
+        'barangay_id' => $user['barangay_id'] === null
+            ? null
+            : (int)$user['barangay_id'],
         'barangay'    => $brgyName,
     ];
 
@@ -400,7 +412,7 @@ case 'verify_2fa_login':
 
     out(true, [
         'authenticated'     => true,
-        'role'              => 'admin',
+        'role'              => $user['role'],
         'name'              => $user['full_name'],
         'profile_completed' => (int)($user['profile_completed'] ?? 0),
         'last_login'        => $prevLogin,
@@ -470,7 +482,7 @@ case 'verify_2fa_recovery':
 
     if (
         !$user ||
-        $user['role'] !== 'admin' ||
+        !isAdministrativeRole($user['role']) ||
         $user['status'] !== 'active' ||
         (int)$user['two_factor_enabled'] !== 1
     ) {
@@ -514,7 +526,7 @@ case 'verify_2fa_recovery':
             $ip = $_SERVER['REMOTE_ADDR'] ?? null;
             $uid = (int)$user['id'];
             $un = (string)$user['full_name'];
-            $bid = (int)$user['barangay_id'];
+            $bid = auditBarangayId($user);
 
             $alog = $db->prepare(
                 'INSERT INTO activity_log
@@ -600,7 +612,7 @@ case 'verify_2fa_recovery':
         $ip = $_SERVER['REMOTE_ADDR'] ?? null;
         $uid = (int)$user['id'];
         $un = (string)$user['full_name'];
-        $bid = (int)$user['barangay_id'];
+        $bid = auditBarangayId($user);
 
         $recoveryLog = $db->prepare(
             'INSERT INTO activity_log
@@ -653,7 +665,9 @@ case 'verify_2fa_recovery':
         'id'          => (int)$user['id'],
         'name'        => $user['full_name'],
         'role'        => $user['role'],
-        'barangay_id' => (int)$user['barangay_id'],
+        'barangay_id' => $user['barangay_id'] === null
+            ? null
+            : (int)$user['barangay_id'],
         'barangay'    => $brgyName,
     ];
 
@@ -672,7 +686,7 @@ case 'verify_2fa_recovery':
 
     out(true, [
         'authenticated'            => true,
-        'role'                     => 'admin',
+        'role'                     => $user['role'],
         'name'                     => $user['full_name'],
         'profile_completed'        => (int)($user['profile_completed'] ?? 0),
         'last_login'               => $prevLogin,
@@ -718,7 +732,7 @@ case 'begin_2fa_enrollment':
     $user = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    if (!$user || $user['role'] !== 'admin' || $user['status'] !== 'active') {
+    if (!$user || !isAdministrativeRole($user['role']) || $user['status'] !== 'active') {
         unset($_SESSION['pending_2fa']);
         unset($_SESSION['pending_2fa_enrollment']);
 
@@ -850,7 +864,7 @@ case 'verify_2fa_enrollment_code':
     $user = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    if (!$user || $user['role'] !== 'admin' || $user['status'] !== 'active') {
+    if (!$user || !isAdministrativeRole($user['role']) || $user['status'] !== 'active') {
         unset($_SESSION['pending_2fa']);
         unset($_SESSION['pending_2fa_enrollment']);
 
@@ -951,7 +965,7 @@ case 'activate_2fa':
     $user = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    if (!$user || $user['role'] !== 'admin' || $user['status'] !== 'active') {
+    if (!$user || !isAdministrativeRole($user['role']) || $user['status'] !== 'active') {
         out(false, [
             'error' => 'This account cannot activate administrator 2FA.'
         ], 403);
@@ -1060,7 +1074,7 @@ case 'activate_2fa':
         $ip = $_SERVER['REMOTE_ADDR'] ?? null;
         $uid = (int)$user['id'];
         $un = (string)$user['full_name'];
-        $bid = (int)$user['barangay_id'];
+        $bid = auditBarangayId($user);
 
         $alog = $db->prepare(
             'INSERT INTO activity_log
@@ -1109,6 +1123,28 @@ case 'signup':
 
     if (!$name || !$email || $brgy_id <= 0) {
         out(false, ['error' => 'Please fill all required fields.'], 422);
+    }
+    
+    $brgyCheck = $db->prepare(
+    'SELECT id
+       FROM barangays
+      WHERE id = ?
+      LIMIT 1'
+    );
+
+    $brgyCheck->bind_param('i', $brgy_id);
+    $brgyCheck->execute();
+
+    $barangayExists = $brgyCheck
+        ->get_result()
+        ->fetch_assoc();
+
+    $brgyCheck->close();
+
+    if (!$barangayExists) {
+        out(false, [
+            'error' => 'Selected barangay does not exist.'
+        ], 422);
     }
 
     $pwError = password_strength_error($pw);

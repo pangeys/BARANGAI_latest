@@ -10,8 +10,12 @@ function out($ok, $data = [], $code = 200) {
 
 if (empty($_SESSION['user']))     out(false, ['error' => 'Not logged in.'], 401);
 $user = $_SESSION['user'];
+$barangay_id = (int)($user['barangay_id'] ?? 0);
+
+if ($barangay_id <= 0) {
+    out(false, ['error' => 'No barangay on your account.'], 400);
+}
 if ($user['role'] !== 'resident') out(false, ['error' => 'Residents only.'], 403);
-if (!$user['barangay_id'])        out(false, ['error' => 'No barangay on your account.'], 400);
 
 $db = getDB();
 
@@ -67,6 +71,25 @@ $category       = $input['category']       ?? '';
 $confidence     = (int)($input['confidence']  ?? 0);
 $priority       = $input['priority']       ?? 'Low';
 $priority_badge = $input['priority_badge'] ?? 'b-gray';
+$allowedPriorities = [
+    'Critical',
+    'High',
+    'Medium',
+    'Low'
+];
+
+if (!in_array($priority, $allowedPriorities, true)) {
+    $priority = 'Low';
+}
+
+$priorityBadges = [
+    'Critical' => 'b-red',
+    'High'     => 'b-amber',
+    'Medium'   => 'b-blue',
+    'Low'      => 'b-green'
+];
+
+$priority_badge = $priorityBadges[$priority] ?? 'b-green';
 $score          = $input['score']          ?? '';
 
 if (!$incident_date || !$location || !$description)
@@ -136,8 +159,8 @@ $stmt->bind_param(
     $score,
     $priority,
     $priority_badge,
-    $user['barangay_id'],
-    $user['id']
+    $$barangay_id,
+    $uid
 );
 
 if ($stmt->execute()) {

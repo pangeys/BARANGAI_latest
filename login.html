@@ -374,6 +374,10 @@ const $ = id => document.getElementById(id);
 
 let _redirectTo = 'index.html';   // where to go once the gate passes
 
+function isAdministrativeRole(role){
+  return role === 'admin' || role === 'super_admin';
+}
+
 function showMsg(elId, type, text){ const el=$(elId); el.className='auth-msg '+type; el.textContent=text; }
 function clearMsg(elId){ $(elId).className='auth-msg'; $(elId).textContent=''; }
 
@@ -422,8 +426,9 @@ async function doLogin(){
       return;
     }
 
-    // Residents are already fully authenticated by the backend.
-    if (data.role !== 'admin'){
+    // Non-administrative users are already fully authenticated
+    // by the backend. Admin and Super Admin must complete 2FA.
+    if (!isAdministrativeRole(data.role)){
       continueAfterAuthentication(data);
       return;
     }
@@ -459,14 +464,41 @@ function go(){
 }
 
 function continueAfterAuthentication(data){
-  _redirectTo = data.role === 'admin' ? 'index.html' : 'resident.html';
 
-  if (data.role !== 'admin'){
+  if (data.role === 'resident'){
+    _redirectTo = 'resident.html';
     go();
     return;
   }
 
-  // Existing profile gate remains unchanged, but only runs AFTER 2FA succeeds.
+  if (data.role === 'admin'){
+    _redirectTo = 'index.html';
+  }
+
+ if (data.role === 'super_admin'){
+
+  _redirectTo = 'index.html';
+
+  if (Number(data.profile_completed) === 0){
+    openSetup();
+    return;
+  }
+
+  go();
+  return;
+  }
+
+  if (data.role !== 'admin'){
+    showMsg(
+      'loginMsg',
+      'err',
+      'This account role does not have a configured destination.'
+    );
+    resetSignIn();
+    return;
+  }
+
+  // Existing Admin profile gate runs only after 2FA succeeds.
   if (Number(data.profile_completed) === 0){
     openSetup();
   } else {
@@ -789,7 +821,10 @@ $('recoverySavedBtn').addEventListener('click', function(){
 /* ---- Confirm modal (returning admin) ---- */
 function openConfirm(name, role, lastLogin){
   $('cf_name').textContent  = name || '—';
-  $('cf_role').textContent  = role === 'admin' ? 'Administrator' : (role || '—');
+  $('cf_role').textContent =
+  role === 'super_admin' ? 'Super Administrator' :
+  role === 'admin'       ? 'Administrator' :
+                           (role || '—');
   $('cf_last').textContent  = lastLogin
       ? new Date(String(lastLogin).replace(' ','T')).toLocaleString()
       : 'First login';
@@ -820,7 +855,10 @@ async function openSetup(){
     $('pf_email').value = p.email     || '';
     $('pf_phone').value = p.phone     || '';
     $('pf_addr').value  = p.address   || '';
-    $('pf_role').value  = p.role === 'admin' ? 'Administrator' : (p.role || '');
+    $('pf_role').value =
+    p.role === 'super_admin' ? 'Super Administrator' :
+    p.role === 'admin'       ? 'Administrator' :
+                             (p.role || '');
   }
   $('confirmOverlay').classList.remove('open');
   $('setupOverlay').classList.add('open');

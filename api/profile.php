@@ -10,17 +10,57 @@ function out($ok, $data = [], $code = 200) {
     exit;
 }
 
-function current_user() { return $_SESSION['user'] ?? null; }
+function current_user() {
+    return $_SESSION['user'] ?? null;
+}
+
+function is_super_admin($u) {
+    return (($u['role'] ?? '') === 'super_admin');
+}
+
+function is_barangay_admin($u) {
+    return (($u['role'] ?? '') === 'admin');
+}
+
+function is_administrative_user($u) {
+    return in_array(
+        ($u['role'] ?? ''),
+        ['admin', 'super_admin'],
+        true
+    );
+}
+
 function require_login() {
     $u = current_user();
-    if (!$u) out(false, ['error' => 'Not logged in.'], 401);
+
+    if (!$u) {
+        out(false, ['error' => 'Not logged in.'], 401);
+    }
+
     return $u;
 }
+
 function require_admin() {
     $u = require_login();
-    if (($u['role'] ?? '') !== 'admin') out(false, ['error' => 'Admins only.'], 403);
+
+    if (!is_administrative_user($u)) {
+        out(false, ['error' => 'Administrators only.'], 403);
+    }
+
+    if (
+        is_barangay_admin($u) &&
+        (
+            !isset($u['barangay_id']) ||
+            $u['barangay_id'] === null ||
+            (int)$u['barangay_id'] <= 0
+        )
+    ) {
+        out(false, ['error' => 'Administrator barangay is not configured.'], 403);
+    }
+
     return $u;
 }
+
 function log_activity($db, $action, $detail = '') {
     $u    = current_user();
     $uid  = $u['id']          ?? null;
@@ -101,13 +141,38 @@ case 'update_profile':
 
 case 'list_users':
     $admin = require_admin();
-    $bid   = (int)$admin['barangay_id'];
-    $stmt  = $db->prepare('SELECT id, username, full_name, email, phone, role, status, last_login, login_count FROM users WHERE barangay_id = ? ORDER BY role, full_name');
-    $stmt->bind_param('i', $bid);
+
+    if (is_super_admin($admin)) {
+        $stmt = $db->prepare(
+            'SELECT id, username, full_name, email, phone, role,
+                    status, last_login, login_count, barangay_id
+               FROM users
+              ORDER BY role, full_name'
+        );
+    } else {
+        $bid = (int)$admin['barangay_id'];
+
+        $stmt = $db->prepare(
+            'SELECT id, username, full_name, email, phone, role,
+                    status, last_login, login_count, barangay_id
+               FROM users
+              WHERE barangay_id = ?
+              ORDER BY role, full_name'
+        );
+        $stmt->bind_param('i', $bid);
+    }
+
     $stmt->execute();
-    $res = $stmt->get_result(); $list = [];
-    while ($r = $res->fetch_assoc()) $list[] = $r;
+
+    $res  = $stmt->get_result();
+    $list = [];
+
+    while ($r = $res->fetch_assoc()) {
+        $list[] = $r;
+    }
+
     $stmt->close();
+
     out(true, ['users' => $list]);
 
 case 'create_user':
@@ -117,8 +182,21 @@ case 'create_user':
     $uname = trim($input['username']  ?? '');
     $role  = trim($input['role']      ?? 'staff');
     $pw    = $input['password']        ?? '';
-    $allowedRoles = ['admin','staff','viewer'];
-    if (!in_array($role, $allowedRoles, true)) $role = 'staff';
+    if (is_super_admin($admin)) {
+    $allowedRoles = ['admin', 'staff', 'viewer', 'resident'];
+    } else {
+        $allowedRoles = ['admin', 'staff', 'viewer', 'resident'];
+    }
+
+    if ($role === 'super_admin') {
+        out(false, [
+            'error' => 'Super Admin accounts cannot be created through this action.'
+        ], 403);
+    }
+
+    if (!in_array($role, $allowedRoles, true)) {
+        $role = 'staff';
+    }
     if ($name===''||$email===''||$uname==='')
         out(false, ['error' => 'All fields are required.'], 422);
     $pwError = password_strength_error($pw);
@@ -130,7 +208,31 @@ case 'create_user':
     if ($chk->num_rows > 0) { $chk->close(); out(false, ['error' => 'Username or email already exists.'], 409); }
     $chk->close();
     $hash = password_hash($pw, PASSWORD_DEFAULT);
-    $bid  = (int)$admin['barangay_id'];
+    if (is_super_admin($admin)) {
+    $bid = (int)($input['barangay_id'] ?? 0);
+
+    if ($bid <= 0) {
+        out(false, [
+            'error' => 'A barangay must be selected for this user.'
+        ], 422);
+    }
+
+    $barangayCheck = $db->prepare(
+        'SELECT id FROM barangays WHERE id = ? LIMIT 1'
+    );
+    $barangayCheck->bind_param('i', $bid);
+    $barangayCheck->execute();
+    $barangayExists = $barangayCheck->get_result()->fetch_assoc();
+    $barangayCheck->close();
+
+    if (!$barangayExists) {
+        out(false, [
+            'error' => 'Selected barangay does not exist.'
+        ], 422);
+    }
+    } else {
+        $bid = (int)$admin['barangay_id'];
+    }
     $stmt = $db->prepare('INSERT INTO users (username, full_name, email, password_hash, role, barangay_id, status, profile_completed) VALUES (?, ?, ?, ?, ?, ?, "active", 0)');
     $stmt->bind_param('sssssi', $uname, $name, $email, $hash, $role, $bid);
     $ok = $stmt->execute(); $stmt->close();
@@ -144,93 +246,384 @@ case 'update_user':
     $id     = (int)($input['id']    ?? 0);
     $role   = trim($input['role']   ?? '');
     $status = trim($input['status'] ?? '');
-    if ($id <= 0) out(false, ['error' => 'Missing user id.'], 422);
-    if ($id === (int)$admin['id'] && $role && $role !== 'admin')
-        out(false, ['error' => "You can't remove your own admin role."], 422);
-    $allowedRoles  = ['admin','staff','viewer'];
-    $allowedStatus = ['active','disabled','pending'];
-    if ($role   && !in_array($role,   $allowedRoles,  true)) out(false, ['error' => 'Bad role.'], 422);
-    if ($status && !in_array($status, $allowedStatus, true)) out(false, ['error' => 'Bad status.'], 422);
-    $bid  = (int)$admin['barangay_id'];
-    $stmt = $db->prepare('UPDATE users SET role=COALESCE(NULLIF(?,""),role), status=COALESCE(NULLIF(?,""),status) WHERE id=? AND barangay_id=?');
-    $stmt->bind_param('ssii', $role, $status, $id, $bid);
-    $ok = $stmt->execute(); $stmt->close();
-    if (!$ok) out(false, ['error' => 'Update failed.'], 500);
-    // action = 'user_updated' — Activity Log only
-    log_activity($db, 'user_updated', "Updated user #$id (role=$role, status=$status)");
-    out(true, ['message' => 'User updated.']);
+
+    if ($id <= 0) {
+        out(false, ['error' => 'Missing user id.'], 422);
+    }
+
+    $targetStmt = $db->prepare(
+        'SELECT id, role, barangay_id
+           FROM users
+          WHERE id = ?
+          LIMIT 1'
+    );
+    $targetStmt->bind_param('i', $id);
+    $targetStmt->execute();
+    $target = $targetStmt->get_result()->fetch_assoc();
+    $targetStmt->close();
+
+    if (!$target) {
+        out(false, ['error' => 'User not found.'], 404);
+    }
+
+    $targetBarangayId = $target['barangay_id'] === null
+        ? null
+        : (int)$target['barangay_id'];
+
+    /*
+     * Barangay Admin can modify only users from their own barangay.
+     */
+    if (!is_super_admin($admin)) {
+        if ($targetBarangayId !== (int)$admin['barangay_id']) {
+            out(false, [
+                'error' => 'You cannot manage users from another barangay.'
+            ], 403);
+        }
+    }
+
+    /*
+     * Super Admin role is protected.
+     * This ordinary endpoint cannot create, assign,
+     * remove, disable, or otherwise modify a Super Admin account.
+     */
+    if (($target['role'] ?? '') === 'super_admin') {
+        out(false, [
+            'error' => 'Super Admin accounts require secure verification.'
+        ], 403);
+    }
+
+    if ($role === 'super_admin') {
+        out(false, [
+            'error' => 'Super Admin promotion requires secure verification.'
+        ], 403);
+    }
+
+    if (
+        $id === (int)$admin['id'] &&
+        $role !== '' &&
+        $role !== ($admin['role'] ?? '')
+    ) {
+        out(false, [
+            'error' => "You can't remove your own administrative role."
+        ], 422);
+    }
+
+    $allowedRoles = ['admin', 'staff', 'viewer', 'resident'];
+    $allowedStatus = ['active', 'disabled', 'pending'];
+
+    if ($role !== '' && !in_array($role, $allowedRoles, true)) {
+        out(false, ['error' => 'Bad role.'], 422);
+    }
+
+    if ($status !== '' && !in_array($status, $allowedStatus, true)) {
+        out(false, ['error' => 'Bad status.'], 422);
+    }
+
+    $stmt = $db->prepare(
+        'UPDATE users
+            SET role = COALESCE(NULLIF(?, ""), role),
+                status = COALESCE(NULLIF(?, ""), status)
+          WHERE id = ?'
+    );
+    $stmt->bind_param('ssi', $role, $status, $id);
+
+    $ok = $stmt->execute();
+    $affected = $stmt->affected_rows;
+    $stmt->close();
+
+    if (!$ok) {
+        out(false, ['error' => 'Update failed.'], 500);
+    }
+
+    log_activity(
+        $db,
+        'user_updated',
+        "Updated user #$id (role=$role, status=$status)"
+    );
+
+    out(true, [
+        'message' => 'User updated.',
+        'changed' => $affected > 0
+    ]);
 
 /* ── ACTIVITY LOG — user actions only (login, user mgmt, profile) ── */
 case 'activity_log':
     $admin = require_admin();
-    $bid   = (int)$admin['barangay_id'];
     $limit = min(200, max(1, (int)($_GET['limit'] ?? 50)));
-    // Only user-related actions — NOT settings saves, NOT complaint events
-    $userActions  = ['login','logout','profile_updated','user_created','user_updated','user_disabled','user_enabled'];
-    $placeholders = implode(',', array_fill(0, count($userActions), '?'));
-    $stmt = $db->prepare(
-        "SELECT user_name, action, detail, ip_address, created_at
-           FROM activity_log
-          WHERE (barangay_id = ? OR barangay_id IS NULL)
-            AND action IN ($placeholders)
-          ORDER BY created_at DESC
-          LIMIT ?"
+
+    // User/account-related actions
+    $userActions = [
+        'login',
+        'logout',
+        'profile_updated',
+        'user_created',
+        'user_updated',
+        'user_disabled',
+        'user_enabled'
+    ];
+
+    $placeholders = implode(
+        ',',
+        array_fill(0, count($userActions), '?')
     );
-    $types  = 'i' . str_repeat('s', count($userActions)) . 'i';
-    $params = array_merge([$bid], $userActions, [$limit]);
-    $stmt->bind_param($types, ...$params);
+
+    if (is_super_admin($admin)) {
+
+        /*
+         * Super Admin:
+         * activity from every barangay and system-level activity.
+         */
+        $stmt = $db->prepare(
+            "SELECT user_name,
+                    barangay_id,
+                    action,
+                    detail,
+                    ip_address,
+                    created_at
+               FROM activity_log
+              WHERE action IN ($placeholders)
+              ORDER BY created_at DESC
+              LIMIT ?"
+        );
+
+        $types  = str_repeat('s', count($userActions)) . 'i';
+        $params = array_merge($userActions, [$limit]);
+
+        $stmt->bind_param($types, ...$params);
+
+    } else {
+
+        /*
+         * Barangay Admin:
+         * own barangay + system-wide NULL entries only.
+         */
+        $bid = (int)$admin['barangay_id'];
+
+        $stmt = $db->prepare(
+            "SELECT user_name,
+                    barangay_id,
+                    action,
+                    detail,
+                    ip_address,
+                    created_at
+               FROM activity_log
+              WHERE (barangay_id = ? OR barangay_id IS NULL)
+                AND action IN ($placeholders)
+              ORDER BY created_at DESC
+              LIMIT ?"
+        );
+
+        $types  = 'i' . str_repeat('s', count($userActions)) . 'i';
+        $params = array_merge([$bid], $userActions, [$limit]);
+
+        $stmt->bind_param($types, ...$params);
+    }
+
     $stmt->execute();
-    $res = $stmt->get_result(); $log = [];
-    while ($r = $res->fetch_assoc()) $log[] = $r;
+
+    $res = $stmt->get_result();
+    $log = [];
+
+    while ($r = $res->fetch_assoc()) {
+        $log[] = $r;
+    }
+
     $stmt->close();
+
     out(true, ['log' => $log]);
 
 /* ── STAFF STATS ── */
 case 'staff_stats':
     $admin = require_admin();
-    $bid   = (int)$admin['barangay_id'];
-    $stmt  = $db->prepare(
-        "SELECT user_name, action, detail
-           FROM activity_log
-          WHERE barangay_id = ?
-            AND action IN ('complaint_resolved','complaint_closed')"
-    );
-    $stmt->bind_param('i', $bid);
+
+    /*
+     * Load resolved/closed activity.
+     */
+    if (is_super_admin($admin)) {
+
+        $stmt = $db->prepare(
+            "SELECT user_id,
+                    user_name,
+                    barangay_id,
+                    action,
+                    detail
+               FROM activity_log
+              WHERE action IN ('complaint_resolved','complaint_closed')"
+        );
+
+    } else {
+
+        $bid = (int)$admin['barangay_id'];
+
+        $stmt = $db->prepare(
+            "SELECT user_id,
+                    user_name,
+                    barangay_id,
+                    action,
+                    detail
+               FROM activity_log
+              WHERE barangay_id = ?
+                AND action IN ('complaint_resolved','complaint_closed')"
+        );
+
+        $stmt->bind_param('i', $bid);
+    }
+
     $stmt->execute();
-    $res = $stmt->get_result(); $byUser = [];
+
+    $res    = $stmt->get_result();
+    $byUser = [];
+
     while ($r = $res->fetch_assoc()) {
-        $name = $r['user_name'] ?: 'Unknown';
-        if (!isset($byUser[$name])) $byUser[$name] = ['resolved'=>0,'closed'=>0,'cats'=>[]];
-        if ($r['action'] === 'complaint_resolved') $byUser[$name]['resolved']++;
-        else                                        $byUser[$name]['closed']++;
-        if (preg_match('/\[cat:([^\]]*)\]/', $r['detail']??'', $m)) {
+
+        /*
+         * Use database user ID whenever available.
+         * This prevents users with identical names in
+         * different barangays from being merged together.
+         */
+        if (!empty($r['user_id'])) {
+            $key = 'id:' . (int)$r['user_id'];
+        } else {
+            $key = 'name:' .
+                (string)($r['barangay_id'] ?? 'null') .
+                ':' .
+                (string)($r['user_name'] ?? 'Unknown');
+        }
+
+        if (!isset($byUser[$key])) {
+            $byUser[$key] = [
+                'user_id'     => $r['user_id'] ?? null,
+                'full_name'   => $r['user_name'] ?: 'Unknown',
+                'barangay_id' => $r['barangay_id'] === null
+                    ? null
+                    : (int)$r['barangay_id'],
+                'role'        => 'admin',
+                'resolved'    => 0,
+                'closed'      => 0,
+                'cats'        => []
+            ];
+        }
+
+        if ($r['action'] === 'complaint_resolved') {
+            $byUser[$key]['resolved']++;
+        } elseif ($r['action'] === 'complaint_closed') {
+            $byUser[$key]['closed']++;
+        }
+
+        if (
+            preg_match(
+                '/\[cat:([^\]]*)\]/',
+                $r['detail'] ?? '',
+                $m
+            )
+        ) {
             $cat = trim($m[1]);
-            if ($cat !== '') $byUser[$name]['cats'][$cat] = ($byUser[$name]['cats'][$cat] ?? 0) + 1;
+
+            if ($cat !== '') {
+                $byUser[$key]['cats'][$cat] =
+                    ($byUser[$key]['cats'][$cat] ?? 0) + 1;
+            }
         }
     }
+
     $stmt->close();
-    $u = $db->prepare("SELECT full_name, role FROM users WHERE barangay_id=? AND role IN ('admin','staff')");
-    $u->bind_param('i', $bid); $u->execute();
-    $ur = $u->get_result(); $roleOf = [];
-    while ($row = $ur->fetch_assoc()) {
-        $roleOf[$row['full_name']] = $row['role'];
-        if (!isset($byUser[$row['full_name']])) $byUser[$row['full_name']] = ['resolved'=>0,'closed'=>0,'cats'=>[]];
+
+
+    /*
+     * Load the actual Admin/Staff accounts.
+     */
+    if (is_super_admin($admin)) {
+
+        $u = $db->prepare(
+            "SELECT id,
+                    full_name,
+                    role,
+                    barangay_id
+               FROM users
+              WHERE role IN ('admin','staff')"
+        );
+
+    } else {
+
+        $bid = (int)$admin['barangay_id'];
+
+        $u = $db->prepare(
+            "SELECT id,
+                    full_name,
+                    role,
+                    barangay_id
+               FROM users
+              WHERE barangay_id = ?
+                AND role IN ('admin','staff')"
+        );
+
+        $u->bind_param('i', $bid);
     }
+
+    $u->execute();
+
+    $ur = $u->get_result();
+
+    while ($row = $ur->fetch_assoc()) {
+
+        $key = 'id:' . (int)$row['id'];
+
+        if (!isset($byUser[$key])) {
+            $byUser[$key] = [
+                'user_id'     => (int)$row['id'],
+                'full_name'   => $row['full_name'],
+                'barangay_id' => $row['barangay_id'] === null
+                    ? null
+                    : (int)$row['barangay_id'],
+                'role'        => $row['role'],
+                'resolved'    => 0,
+                'closed'      => 0,
+                'cats'        => []
+            ];
+        } else {
+            $byUser[$key]['full_name']   = $row['full_name'];
+            $byUser[$key]['role']        = $row['role'];
+            $byUser[$key]['barangay_id'] = $row['barangay_id'] === null
+                ? null
+                : (int)$row['barangay_id'];
+        }
+    }
+
     $u->close();
+
+
+    /*
+     * Format for the existing frontend.
+     */
     $stats = [];
-    foreach ($byUser as $name => $d) {
-        arsort($d['cats']); $parts = [];
-        foreach ($d['cats'] as $cat => $n) $parts[] = $n . '× ' . $cat;
+
+    foreach ($byUser as $d) {
+
+        arsort($d['cats']);
+
+        $parts = [];
+
+        foreach ($d['cats'] as $cat => $n) {
+            $parts[] = $n . '× ' . $cat;
+        }
+
         $stats[] = [
-            'full_name' => $name,
-            'role'      => $roleOf[$name] ?? 'admin',
-            'resolved'  => $d['resolved'],
-            'closed'    => $d['closed'],
-            'handled'   => $d['resolved'] + $d['closed'],
-            'cats'      => implode(', ', $parts),
+            'user_id'     => $d['user_id'],
+            'full_name'   => $d['full_name'],
+            'barangay_id' => $d['barangay_id'],
+            'role'        => $d['role'],
+            'resolved'    => $d['resolved'],
+            'closed'      => $d['closed'],
+            'handled'     => $d['resolved'] + $d['closed'],
+            'cats'        => implode(', ', $parts)
         ];
     }
-    usort($stats, fn($a,$b) => $b['handled'] - $a['handled']);
+
+    usort(
+        $stats,
+        fn($a, $b) => $b['handled'] - $a['handled']
+    );
+
     out(true, ['stats' => $stats]);
 
 default:

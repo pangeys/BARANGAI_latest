@@ -19,6 +19,22 @@ function respond($data, $code = 200) {
     exit;
 }
 
+function isSuperAdmin($user) {
+    return (($user['role'] ?? '') === 'super_admin');
+}
+
+function isBarangayAdmin($user) {
+    return (($user['role'] ?? '') === 'admin');
+}
+
+function isAdministrativeUser($user) {
+    return in_array(
+        ($user['role'] ?? ''),
+        ['admin', 'super_admin'],
+        true
+    );
+}
+
 function require_admin_session() {
     $user = $_SESSION['user'] ?? null;
 
@@ -26,13 +42,24 @@ function require_admin_session() {
         respond(['error' => 'Authentication required'], 401);
     }
 
-    if (($user['role'] ?? '') !== 'admin') {
+    if (!isAdministrativeUser($user)) {
         respond(['error' => 'Administrator access required'], 403);
     }
 
-    $barangayId = (int)($user['barangay_id'] ?? 0);
-    if ($barangayId <= 0) {
-        respond(['error' => 'Administrator barangay is not configured'], 403);
+    /*
+     * Barangay Admin must always have a valid barangay.
+     * Super Admin may legitimately have barangay_id = NULL.
+     */
+    if (isBarangayAdmin($user)) {
+        $barangayId = $user['barangay_id'] === null
+            ? null
+            : (int)$user['barangay_id'];
+
+        if ($barangayId === null || $barangayId <= 0) {
+            respond([
+                'error' => 'Administrator barangay is not configured'
+            ], 403);
+        }
     }
 
     return $user;
@@ -62,7 +89,11 @@ function logActivity($conn, $userId, $userName, $barangayId, $action, $detail) {
 // All settings routes require a fully authenticated administrator session.
 $sessionUser = require_admin_session();
 
-$barangay_id = (int)$sessionUser['barangay_id'];
+$isSuperAdmin = isSuperAdmin($sessionUser);
+
+$barangay_id = $sessionUser['barangay_id'] === null
+    ? null
+    : (int)$sessionUser['barangay_id'];
 $userId      = (int)$sessionUser['id'];
 $userName    = (string)($sessionUser['name'] ?? 'Unknown');
 
@@ -71,7 +102,39 @@ $conn = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
 $body   = json_decode(file_get_contents('php://input'), true) ?? [];
 $action = $_GET['action'] ?? ($body['action'] ?? '');
+/*
+ * Resolve barangay scope only for barangay-specific
+ * settings actions.
+ *
+ * GET audit is intentionally allowed to run globally
+ * for Super Admin.
+ */
+$target_barangay_id = null;
 
+if (in_array($action, ['get', 'save'], true)) {
+
+    if ($isSuperAdmin) {
+
+        if (isset($_GET['barangay_id'])) {
+            $target_barangay_id = (int)$_GET['barangay_id'];
+        } elseif (isset($body['barangay_id'])) {
+            $target_barangay_id = (int)$body['barangay_id'];
+        }
+
+        if (!$target_barangay_id || $target_barangay_id <= 0) {
+            $conn->close();
+
+            respond([
+                'ok' => false,
+                'error' => 'Super Admin must explicitly select a barangay.'
+            ], 422);
+        }
+
+    } else {
+
+        $target_barangay_id = $barangay_id;
+    }
+}
 // ── GET settings ──────────────────────────────────────────────────
 if ($method === 'GET' && $action === 'get') {
     $defaults = [
@@ -86,8 +149,10 @@ if ($method === 'GET' && $action === 'get') {
         'bilstm_fallback'  => 0,
     ];
 
-    $stmt = $conn->prepare('SELECT * FROM barangays WHERE id = ? LIMIT 1');
-    $stmt->bind_param('i', $barangay_id);
+    $stmt = $conn->prepare(
+    'SELECT * FROM barangays WHERE id = ? LIMIT 1'
+    );
+    $stmt->bind_param('i', $target_barangay_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
@@ -194,14 +259,14 @@ if ($method === 'POST' && $action === 'save') {
             $confidenceFlag,
             $humanValidation,
             $bilstmFallback,
-            $barangay_id
+            $target_barangay_id
         );
     } else {
         // Backward-compatible fallback for an older barangays table.
         $stmt = $conn->prepare(
             'UPDATE barangays SET name = ? WHERE id = ?'
         );
-        $stmt->bind_param('si', $barangayName, $barangay_id);
+        $stmt->bind_param('si', $barangayName, $target_barangay_id);
     }
 
     $ok = $stmt->execute();
@@ -216,7 +281,7 @@ if ($method === 'POST' && $action === 'save') {
         $conn,
         $userId,
         $userName,
-        $barangay_id,
+        $target_barangay_id,
         'settings_saved',
         'System settings updated'
     );
@@ -234,21 +299,96 @@ if ($method === 'GET' && $action === 'audit') {
         'category_updated',
     ];
 
-    $placeholders = implode(',', array_fill(0, count($auditActions), '?'));
-
-    $stmt = $conn->prepare(
-        "SELECT user_name, action, detail, ip_address, created_at
-           FROM activity_log
-          WHERE barangay_id = ?
-            AND action IN ($placeholders)
-          ORDER BY created_at DESC
-          LIMIT 100"
+    $placeholders = implode(
+        ',',
+        array_fill(0, count($auditActions), '?')
     );
 
-    $types  = 'i' . str_repeat('s', count($auditActions));
-    $params = array_merge([$barangay_id], $auditActions);
+    if ($isSuperAdmin) {
 
-    $stmt->bind_param($types, ...$params);
+    /*
+     * Super Admin:
+     * - no barangay_id = global audit
+     * - barangay_id=N  = selected barangay audit
+     */
+    $auditBarangayId = isset($_GET['barangay_id'])
+        ? (int)$_GET['barangay_id']
+        : 0;
+
+    if ($auditBarangayId > 0) {
+
+        $stmt = $conn->prepare(
+            "SELECT user_name,
+                    barangay_id,
+                    action,
+                    detail,
+                    ip_address,
+                    created_at
+               FROM activity_log
+              WHERE barangay_id = ?
+                AND action IN ($placeholders)
+              ORDER BY created_at DESC
+              LIMIT 100"
+        );
+
+        $types  = 'i' . str_repeat('s', count($auditActions));
+        $params = array_merge(
+            [$auditBarangayId],
+            $auditActions
+        );
+
+        $stmt->bind_param($types, ...$params);
+
+    } else {
+
+        $stmt = $conn->prepare(
+            "SELECT user_name,
+                    barangay_id,
+                    action,
+                    detail,
+                    ip_address,
+                    created_at
+               FROM activity_log
+              WHERE action IN ($placeholders)
+              ORDER BY created_at DESC
+              LIMIT 100"
+        );
+
+        $types  = str_repeat('s', count($auditActions));
+        $params = $auditActions;
+
+        $stmt->bind_param($types, ...$params);
+    }
+
+    } else {
+
+        /*
+         * Barangay Admin:
+         * configuration changes for own barangay only.
+         */
+        $stmt = $conn->prepare(
+            "SELECT user_name,
+                    barangay_id,
+                    action,
+                    detail,
+                    ip_address,
+                    created_at
+               FROM activity_log
+              WHERE barangay_id = ?
+                AND action IN ($placeholders)
+              ORDER BY created_at DESC
+              LIMIT 100"
+        );
+
+        $types  = 'i' . str_repeat('s', count($auditActions));
+        $params = array_merge(
+            [$barangay_id],
+            $auditActions
+        );
+
+        $stmt->bind_param($types, ...$params);
+    }
+
     $stmt->execute();
 
     $result = $stmt->get_result();
@@ -261,7 +401,10 @@ if ($method === 'GET' && $action === 'audit') {
     $stmt->close();
     $conn->close();
 
-    respond(['ok' => true, 'log' => $rows]);
+    respond([
+        'ok' => true,
+        'log' => $rows
+    ]);
 }
 
 $conn->close();

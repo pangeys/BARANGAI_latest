@@ -606,8 +606,43 @@ function filterComplaints() { renderComplaints(); }
    SETTINGS — General tab (DB-backed)
 ══════════════════════════════════════════════════════ */
 async function loadSettingsGeneral() {
+
+  const user = window.CURRENT_USER || null;
+
+  // Super Admin settings are barangay-specific.
+  // Do not request them while the global context is selected.
+  if (user && user.role === 'super_admin') {
+
+    const selector =
+      document.getElementById('global-barangay-select');
+
+    const barangayId =
+      selector ? Number(selector.value || 0) : 0;
+
+    if (barangayId <= 0) {
+      return;
+    }
+  }
+
   try {
-    const res  = await fetch('api/settings.php?action=get');
+
+    let url = 'api/settings.php?action=get';
+
+    if (user && user.role === 'super_admin') {
+      const selector =
+        document.getElementById('global-barangay-select');
+
+      const barangayId =
+        Number(selector?.value || 0);
+
+      url += '&barangay_id=' +
+        encodeURIComponent(barangayId);
+    }
+
+    const res = await fetch(
+      url,
+      { credentials:'include' }
+    );
     const data = await res.json();
     if (!data.ok) return;
     const s   = data.settings;
@@ -1041,8 +1076,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderIsoEval();
   renderUsers();
 
-  // Load settings General tab on boot
-  loadSettingsGeneral();
+  // Load barangay-specific settings automatically
+  // only for a normal Barangay Admin.
+  // Super Admin must first select an explicit barangay.
+  if (
+    window.CURRENT_USER &&
+    window.CURRENT_USER.role === 'admin'
+  ) {
+    loadSettingsGeneral();
+  }
   // Show only the General panel by default, hide the rest
   ['categories','ai','audit','officers'].forEach(name => {
     const p = document.getElementById('settings-panel-' + name);

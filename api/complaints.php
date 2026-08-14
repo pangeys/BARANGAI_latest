@@ -18,6 +18,22 @@ function respond($data, $code = 200) {
     exit;
 }
 
+function isSuperAdmin($user) {
+    return (($user['role'] ?? '') === 'super_admin');
+}
+
+function isBarangayAdmin($user) {
+    return (($user['role'] ?? '') === 'admin');
+}
+
+function isAdministrativeUser($user) {
+    return in_array(
+        ($user['role'] ?? ''),
+        ['admin', 'super_admin'],
+        true
+    );
+}
+
 function require_admin_session() {
     $user = $_SESSION['user'] ?? null;
 
@@ -25,13 +41,20 @@ function require_admin_session() {
         respond(['error' => 'Authentication required'], 401);
     }
 
-    if (($user['role'] ?? '') !== 'admin') {
+    if (!isAdministrativeUser($user)) {
         respond(['error' => 'Administrator access required'], 403);
     }
 
-    $barangayId = (int)($user['barangay_id'] ?? 0);
-    if ($barangayId <= 0) {
-        respond(['error' => 'Administrator barangay is not configured'], 403);
+    if (isBarangayAdmin($user)) {
+        $barangayId = $user['barangay_id'] === null
+            ? null
+            : (int)$user['barangay_id'];
+
+        if ($barangayId === null || $barangayId <= 0) {
+            respond([
+                'error' => 'Administrator barangay is not configured'
+            ], 403);
+        }
     }
 
     return $user;
@@ -39,7 +62,12 @@ function require_admin_session() {
 
 // IMPORTANT: Require a fully authenticated admin session before opening DB.
 $admin = require_admin_session();
-$barangay_id = (int)$admin['barangay_id'];
+
+$isSuperAdmin = isSuperAdmin($admin);
+
+$barangay_id = $admin['barangay_id'] === null
+    ? null
+    : (int)$admin['barangay_id'];
 
 $db = getDB();
 
@@ -51,6 +79,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!is_array($body)) {
         respond(['error' => 'Invalid JSON body'], 400);
+    }
+        /*
+     * Resolve complaint target barangay.
+     *
+     * Barangay Admin:
+     *   always creates inside own barangay.
+     *
+     * Super Admin:
+     *   must explicitly provide barangay_id.
+     */
+    if ($isSuperAdmin) {
+
+        $targetBarangayId = (int)($body['barangay_id'] ?? 0);
+
+        if ($targetBarangayId <= 0) {
+            $db->close();
+
+            respond([
+                'error' => 'Super Admin must explicitly select a barangay.'
+            ], 422);
+        }
+
+    } else {
+
+        $targetBarangayId = $barangay_id;
+    }
+        /*
+     * Validate target barangay.
+     */
+    $barangayCheck = $db->prepare(
+        'SELECT id FROM barangays WHERE id = ? LIMIT 1'
+    );
+
+    $barangayCheck->bind_param(
+        'i',
+        $targetBarangayId
+    );
+
+    $barangayCheck->execute();
+
+    $barangayExists = $barangayCheck
+        ->get_result()
+        ->fetch_assoc();
+
+    $barangayCheck->close();
+
+    if (!$barangayExists) {
+        $db->close();
+
+        respond([
+            'error' => 'Selected barangay does not exist.'
+        ], 422);
     }
 
     $complaint_id  = $body['id']          ?? '#000';
@@ -92,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $complaint_id, $date_filed, $incident_date, $incident_time,
         $location, $description, $complainant, $affected,
         $category, $confidence, $priority, $priority_badge,
-        $score, $officer, $status, $status_badge, $barangay_id
+        $score, $officer, $status, $status_badge, $targetBarangayId
     );
 
     if ($stmt->execute()) {
@@ -112,6 +192,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 //  GET — complaints belonging only to the authenticated admin's barangay
 // ══════════════════════════════════════════════════════════════════
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        /*
+     * Resolve complaint read scope.
+     */
+    if ($isSuperAdmin) {
+
+        $requestedBarangayId = isset($_GET['barangay_id'])
+            ? (int)$_GET['barangay_id']
+            : 0;
+
+        $requestedScope = trim(
+            (string)($_GET['scope'] ?? '')
+        );
+
+        if ($requestedBarangayId > 0) {
+
+            $barangayCheck = $db->prepare(
+                'SELECT id FROM barangays WHERE id = ? LIMIT 1'
+            );
+            $barangayCheck->bind_param('i', $requestedBarangayId);
+            $barangayCheck->execute();
+
+            $barangayExists = $barangayCheck
+                ->get_result()
+                ->fetch_assoc();
+
+            $barangayCheck->close();
+
+            if (!$barangayExists) {
+                $db->close();
+                respond([
+                    'error' => 'Selected barangay does not exist'
+                ], 422);
+            }
+
+            $targetBarangayId = $requestedBarangayId;
+            $globalScope = false;
+
+        } elseif ($requestedScope === 'all') {
+
+            $targetBarangayId = null;
+            $globalScope = true;
+
+        } else {
+
+            $db->close();
+
+            respond([
+                'error' => 'Super Admin must select a barangay or explicitly request scope=all'
+            ], 422);
+        }
+
+    } else {
+
+        $targetBarangayId = $barangay_id;
+        $globalScope = false;
+    }
 
     if (isset($_GET['id'])) {
         $id = (int)$_GET['id'];
@@ -121,10 +257,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             respond(['error' => 'Invalid complaint id'], 422);
         }
 
+        if ($globalScope) {
+
         $stmt = $db->prepare(
-            'SELECT * FROM complaints WHERE id = ? AND barangay_id = ? LIMIT 1'
+            'SELECT * FROM complaints
+            WHERE id = ?
+            LIMIT 1'
         );
-        $stmt->bind_param('ii', $id, $barangay_id);
+        $stmt->bind_param('i', $id);
+
+        } else {
+
+            $stmt = $db->prepare(
+                'SELECT * FROM complaints
+                WHERE id = ?
+                AND barangay_id = ?
+                LIMIT 1'
+            );
+            $stmt->bind_param(
+                'ii',
+                $id,
+                $targetBarangayId
+            );
+        }
         $stmt->execute();
         $row = $stmt->get_result()->fetch_assoc();
         $stmt->close();
@@ -137,12 +292,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         respond($row);
     }
 
+    if ($globalScope) {
+
+    $stmt = $db->prepare(
+        'SELECT * FROM complaints
+         ORDER BY date_filed DESC'
+    );
+
+    } else {
+
     $stmt = $db->prepare(
         'SELECT * FROM complaints
          WHERE barangay_id = ?
          ORDER BY date_filed DESC'
     );
-    $stmt->bind_param('i', $barangay_id);
+
+    $stmt->bind_param(
+        'i',
+        $targetBarangayId
+    );
+    }
     $stmt->execute();
     $result = $stmt->get_result();
 
