@@ -99,6 +99,29 @@ $userName    = (string)($sessionUser['name'] ?? 'Unknown');
 
 $conn = getDB();
 
+
+/*
+ * Ensure the two General settings that affect live resident behavior exist
+ * even when BarangAI is pointed at an older local database dump.
+ */
+function ensureRuntimeSettingColumns($conn) {
+    $columns = [];
+    $res = $conn->query('SHOW COLUMNS FROM barangays');
+    if ($res) {
+        while ($row = $res->fetch_assoc()) $columns[] = $row['Field'];
+        $res->free();
+    }
+
+    if (!in_array('auto_classify', $columns, true)) {
+        $conn->query("ALTER TABLE barangays ADD COLUMN auto_classify TINYINT(1) NOT NULL DEFAULT 1");
+    }
+    if (!in_array('allow_anonymous', $columns, true)) {
+        $conn->query("ALTER TABLE barangays ADD COLUMN allow_anonymous TINYINT(1) NOT NULL DEFAULT 1");
+    }
+}
+
+ensureRuntimeSettingColumns($conn);
+
 $method = $_SERVER['REQUEST_METHOD'];
 $body   = json_decode(file_get_contents('php://input'), true) ?? [];
 $action = $_GET['action'] ?? ($body['action'] ?? '');
@@ -214,60 +237,39 @@ if ($method === 'POST' && $action === 'save') {
         respond(['ok' => false, 'error' => 'Invalid admin email address'], 422);
     }
 
-    // Detect whether the newer optional settings columns exist.
+    // Update only columns that actually exist. The two live runtime columns
+    // are guaranteed above; older optional columns remain backward-compatible.
     $cols = [];
     $res = $conn->query('SHOW COLUMNS FROM barangays');
+    while ($col = $res->fetch_assoc()) $cols[] = $col['Field'];
 
-    while ($col = $res->fetch_assoc()) {
-        $cols[] = $col['Field'];
+    $sets = ['name = ?'];
+    $types = 's';
+    $values = [$barangayName];
+
+    if (in_array('municipality', $cols, true)) {
+        $sets[] = 'municipality = ?'; $types .= 's'; $values[] = $municipality;
+    }
+    if (in_array('admin_email', $cols, true)) {
+        $sets[] = 'admin_email = ?'; $types .= 's'; $values[] = $adminEmail;
+    }
+    $sets[] = 'auto_classify = ?'; $types .= 'i'; $values[] = $autoClassify;
+    $sets[] = 'allow_anonymous = ?'; $types .= 'i'; $values[] = $allowAnonymous;
+
+    if (in_array('confidence_flag', $cols, true)) {
+        $sets[] = 'confidence_flag = ?'; $types .= 'i'; $values[] = $confidenceFlag;
+    }
+    if (in_array('human_validation', $cols, true)) {
+        $sets[] = 'human_validation = ?'; $types .= 'i'; $values[] = $humanValidation;
+    }
+    if (in_array('bilstm_fallback', $cols, true)) {
+        $sets[] = 'bilstm_fallback = ?'; $types .= 'i'; $values[] = $bilstmFallback;
     }
 
-    $requiredExtras = [
-        'municipality',
-        'admin_email',
-        'auto_classify',
-        'allow_anonymous',
-        'confidence_flag',
-        'human_validation',
-        'bilstm_fallback',
-    ];
-
-    $hasExtras = count(array_diff($requiredExtras, $cols)) === 0;
-
-    if ($hasExtras) {
-        $stmt = $conn->prepare(
-            'UPDATE barangays
-                SET name = ?,
-                    municipality = ?,
-                    admin_email = ?,
-                    auto_classify = ?,
-                    allow_anonymous = ?,
-                    confidence_flag = ?,
-                    human_validation = ?,
-                    bilstm_fallback = ?
-              WHERE id = ?'
-        );
-
-        // Corrected type string: 3 strings + 6 integers.
-        $stmt->bind_param(
-            'sssiiiiii',
-            $barangayName,
-            $municipality,
-            $adminEmail,
-            $autoClassify,
-            $allowAnonymous,
-            $confidenceFlag,
-            $humanValidation,
-            $bilstmFallback,
-            $target_barangay_id
-        );
-    } else {
-        // Backward-compatible fallback for an older barangays table.
-        $stmt = $conn->prepare(
-            'UPDATE barangays SET name = ? WHERE id = ?'
-        );
-        $stmt->bind_param('si', $barangayName, $target_barangay_id);
-    }
+    $types .= 'i';
+    $values[] = $target_barangay_id;
+    $stmt = $conn->prepare('UPDATE barangays SET ' . implode(', ', $sets) . ' WHERE id = ?');
+    $stmt->bind_param($types, ...$values);
 
     $ok = $stmt->execute();
     $stmt->close();

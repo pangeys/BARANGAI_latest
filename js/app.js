@@ -495,6 +495,11 @@ function wizardBack() {
 async function wizardSubmit() {
   const description = document.getElementById('w-description')?.value || '';
   const affected    = document.getElementById('w-affected')?.value    || '1';
+  const complainantInput = (document.getElementById('w-complainant')?.value || '').trim();
+  if (!_runtimeSettings.allow_anonymous && !complainantInput) {
+    alert('Anonymous complaints are disabled. Please provide the complainant name.');
+    return;
+  }
   const cat         = _lastAiResult.cat;
   const conf        = _lastAiResult.conf;
   const ahp         = computeAHPScore(cat, affected, description);
@@ -506,7 +511,7 @@ async function wizardSubmit() {
     location:    document.getElementById('w-location')?.value    || '',
     date:        document.getElementById('w-date')?.value        || '',
     time:        document.getElementById('w-time')?.value        || '',
-    complainant: document.getElementById('w-complainant')?.value || 'Anonymous',
+    complainant: complainantInput || 'Anonymous',
     affected, category: cat, confidence: conf,
     score: ahp.score.toString(), priority: priInfo.label,
     pb: priInfo.badge, officer: '—', status: 'Open', sb: 'b-gray',
@@ -552,13 +557,17 @@ function renderWizardStep() {
 
 function runAiClassification() {
   const desc   = document.getElementById('w-description')?.value || '';
-  const result = classifyDescription(desc);
+  const result = _runtimeSettings.auto_classify
+    ? classifyDescription(desc)
+    : { cat: 'Unclassified', conf: 0, scores: {}, scoreType: 'disabled' };
   _lastAiResult = result;
   const catEl  = document.getElementById('ai-cat');
   const confEl = document.getElementById('ai-conf');
   const barsEl = document.getElementById('ai-conf-bars');
   if (catEl)  catEl.textContent  = result.cat;
-  if (confEl) confEl.textContent = result.conf + '% confidence · SVM (TF-IDF bigrams)';
+  if (confEl) confEl.textContent = _runtimeSettings.auto_classify
+    ? result.conf + '% relative SVM score · Word (1,3) + char_wb (3,6) TF-IDF'
+    : 'Automatic classification is disabled in Settings.';
   if (barsEl) {
     barsEl.innerHTML = CATEGORIES.map(cat => {
       const pct = result.scores[cat] || 3;
@@ -581,7 +590,7 @@ function runAiClassification() {
     ['Description',     (desc.length > 80 ? desc.slice(0,80) + '…' : desc)],
     ['Complainant',     document.getElementById('w-complainant')?.value || 'Anonymous'],
     ['Affected',        aff],
-    ['AI Category',     result.cat + ' (' + result.conf + '% confidence)'],
+    ['AI Category',     result.cat + (_runtimeSettings.auto_classify ? ' (' + result.conf + '% relative SVM score)' : ' (automatic classification disabled)')],
     ['Fuzzy AHP Score', ahp.score + ' / 100 → ' + pri.label],
   ].map(r =>
     '<div class="confirm-row"><span class="confirm-key">' + r[0] + '</span><span class="confirm-val">' + r[1] + '</span></div>'
@@ -592,6 +601,10 @@ function runAiClassification() {
    FILTER STATE
 ══════════════════════════════════════════════════════ */
 let _activeStatusFilter = 'All';
+
+// Runtime settings that directly affect complaint submission.
+// Defaults preserve BarangAI's core behavior until DB-backed settings load.
+let _runtimeSettings = { auto_classify: true, allow_anonymous: true };
 
 function filterByStatus(status, el) {
   _activeStatusFilter = status;
@@ -646,6 +659,8 @@ async function loadSettingsGeneral() {
     const data = await res.json();
     if (!data.ok) return;
     const s   = data.settings;
+    _runtimeSettings.auto_classify   = !!Number(s.auto_classify);
+    _runtimeSettings.allow_anonymous = !!Number(s.allow_anonymous);
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
     set('cfg-barangay-name', s.barangay_name);
     set('cfg-municipality',  s.municipality);
@@ -658,9 +673,6 @@ async function loadSettingsGeneral() {
     };
     tog('tog-auto-classify',    s.auto_classify);
     tog('tog-allow-anonymous',  s.allow_anonymous);
-    tog('tog-confidence-flag',  s.confidence_flag);
-    tog('tog-human-validation', s.human_validation);
-    tog('tog-bilstm-fallback',  s.bilstm_fallback);
   } catch(e) { console.warn('Could not load settings', e); }
 }
 
@@ -680,9 +692,6 @@ async function saveSettings() {
         admin_email:      get('cfg-admin-email'),
         auto_classify:    tog('tog-auto-classify'),
         allow_anonymous:  tog('tog-allow-anonymous'),
-        confidence_flag:  tog('tog-confidence-flag'),
-        human_validation: tog('tog-human-validation'),
-        bilstm_fallback:  tog('tog-bilstm-fallback'),
       }),
     });
     const data = await res.json();
@@ -788,17 +797,53 @@ function renderSettingsCategories() {
    SETTINGS — AI Model tab performance bars
 ══════════════════════════════════════════════════════ */
 function renderSettingsAiPerf() {
-  const el = document.getElementById('ai-settings-perf-bars');
-  if (!el) return;
-  el.innerHTML = MODEL_ACCURACY_BARS.map(({ label, value }) =>
-    '<div style="margin-bottom:12px;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">' +
-        '<span style="color:var(--text2);font-weight:500">' + label + '</span>' +
-        '<span style="color:var(--blue);font-family:var(--mono);font-weight:600">' + value + '%</span>' +
-      '</div>' +
-      '<div class="progress"><div class="progress-fill" style="width:' + value + '%"></div></div>' +
-    '</div>'
-  ).join('');
+  const bars = document.getElementById('ai-settings-perf-bars');
+  if (bars) {
+    bars.innerHTML = MODEL_ACCURACY_BARS.map(({ label, value }) =>
+      '<div style="margin-bottom:12px;">' +
+        '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">' +
+          '<span style="color:var(--text2);font-weight:500">' + label + '</span>' +
+          '<span style="color:var(--blue);font-family:var(--mono);font-weight:600">' + value.toFixed(2) + '%</span>' +
+        '</div>' +
+        '<div class="progress"><div class="progress-fill" style="width:' + value + '%"></div></div>' +
+      '</div>'
+    ).join('');
+  }
+
+  const info = document.getElementById('ai-settings-model-summary');
+  if (info) {
+    const items = [
+      ['Active Model', FINAL_MODEL_INFO.active_model],
+      ['Final Modeling Records', FINAL_MODEL_INFO.dataset_size.toLocaleString()],
+      ['Training Records', FINAL_MODEL_INFO.training_size.toLocaleString()],
+      ['Locked Test Records', FINAL_MODEL_INFO.testing_size.toLocaleString()],
+      ['Accuracy', FINAL_MODEL_INFO.accuracy.toFixed(2) + '%'],
+      ['Weighted Precision', FINAL_MODEL_INFO.precision.toFixed(2) + '%'],
+      ['Weighted Recall', FINAL_MODEL_INFO.recall.toFixed(2) + '%'],
+      ['Weighted F1', FINAL_MODEL_INFO.f1.toFixed(2) + '%'],
+      ['Feature Configuration', FINAL_MODEL_INFO.feature_configuration],
+      ['Feature Extraction', FINAL_MODEL_INFO.feature_extraction],
+      ['Best Parameter', FINAL_MODEL_INFO.best_parameter],
+      ['Class Weight', FINAL_MODEL_INFO.class_weight],
+      ['Exact-text Train/Test Overlap', String(FINAL_MODEL_INFO.duplicate_overlap)],
+    ];
+    info.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;">' +
+      items.map(([k,v]) => '<div style="border:1px solid var(--border);border-radius:var(--r);padding:11px 12px;background:var(--bg);">' +
+        '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">' + k + '</div>' +
+        '<div style="font-size:12px;font-weight:600;color:var(--text);word-break:break-word;">' + v + '</div></div>').join('') +
+      '</div>';
+  }
+
+  const tbody = document.getElementById('ai-settings-category-tbody');
+  if (tbody) {
+    tbody.innerHTML = PER_CATEGORY_REPORT.map(r =>
+      '<tr><td style="font-weight:500">' + r.cat + '</td>' +
+      '<td>' + (parseFloat(r.prec) * 100).toFixed(2) + '%</td>' +
+      '<td>' + (parseFloat(r.rec) * 100).toFixed(2) + '%</td>' +
+      '<td><strong>' + (parseFloat(r.f1) * 100).toFixed(2) + '%</strong></td>' +
+      '<td style="font-family:var(--mono)">' + r.sup + '</td></tr>'
+    ).join('');
+  }
 }
 
 /* ══════════════════════════════════════════════════════

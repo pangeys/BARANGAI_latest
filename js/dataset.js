@@ -3,7 +3,7 @@
    Loads and displays the labeled training dataset used to
    train the SVM classifier and the Fuzzy AHP module.
 
-   Expected file:  data/BarangAI_Datasets.csv
+   Reference file: data/combined_dataset.csv
    Expected cols:  Complaint Description, Category, Date,
                    Frequency, Severity, Urgency,
                    Number of Affected Individuals
@@ -20,7 +20,7 @@
    Colab pipeline, then place the CSV in data/.
 ═══════════════════════════════════════════════════════ */
 
-const DATASET_FILE = 'data/BarangAI_Datasets.csv';
+const DATASET_FILE = 'data/combined_dataset.csv';
 
 let datasetRows = [];
 
@@ -38,7 +38,7 @@ function parseCSV(text) {
     return -1;
   };
 
-  const descIdx   = findCol('Complaint Description', 'complaint_description', 'complaint_summary', 'summary', 'text');
+  const descIdx   = findCol('Complaint Description', 'complaint_description', 'complaint_summary', 'summary', 'text', 'complaint_text');
   const categoryIdx = findCol('Category', 'category', 'label', 'class');
   const dateIdx      = findCol('Date', 'date');
   const freqIdx       = findCol('Frequency', 'frequency');
@@ -114,7 +114,7 @@ function initDatasetUpload() {
       if (el) el.innerHTML =
         '<div class="alert alert-warn" style="margin:0;">' +
         '⚠️ Training dataset not found. Place ' +
-        '<code style="font-family:monospace;background:var(--bg2);padding:1px 5px;border-radius:3px;">BarangAI_Datasets.csv</code>' +
+        '<code style="font-family:monospace;background:var(--bg2);padding:1px 5px;border-radius:3px;">combined_dataset.csv</code>' +
         ' inside the <code style="font-family:monospace;background:var(--bg2);padding:1px 5px;border-radius:3px;">data/</code> folder.' +
         '</div>';
     });
@@ -140,8 +140,8 @@ function renderDatasetStats() {
 
   el.innerHTML =
     '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">' +
-    '<span style="font-size:12px;font-weight:600;color:var(--text)">Training set: ' +
-    '<span style="color:var(--blue)">' + total + ' samples · 13 categories</span></span>' +
+    '<span style="font-size:12px;font-weight:600;color:var(--text)">Reference CSV: ' +
+    '<span style="color:var(--blue)">' + total + ' rows · 6 categories</span></span>' +
     '</div>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
     CATEGORIES.map(cat =>

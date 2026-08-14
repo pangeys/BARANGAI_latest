@@ -19,12 +19,113 @@ if ($user['role'] !== 'resident') out(false, ['error' => 'Residents only.'], 403
 
 $db = getDB();
 
+/*
+ * RUNTIME SETTINGS COMPATIBILITY
+ * Older BarangAI databases may not yet have the two runtime-setting columns.
+ * Read them only when they exist; otherwise fall back to the safe defaults
+ * used by the original system. settings.php will create these columns when
+ * an administrator saves the General settings page.
+ */
+function getResidentRuntimeSettings($db, $barangayId) {
+    $defaults = [
+        'auto_classify'   => 1,
+        'allow_anonymous' => 1,
+    ];
+
+    $columns = [];
+    $res = $db->query('SHOW COLUMNS FROM barangays');
+    if ($res) {
+        while ($row = $res->fetch_assoc()) $columns[] = $row['Field'];
+        $res->free();
+    }
+
+    $select = [];
+    if (in_array('auto_classify', $columns, true))   $select[] = 'auto_classify';
+    if (in_array('allow_anonymous', $columns, true)) $select[] = 'allow_anonymous';
+
+    if (!$select) return $defaults;
+
+    $stmt = $db->prepare('SELECT ' . implode(', ', $select) . ' FROM barangays WHERE id = ? LIMIT 1');
+    if (!$stmt) return $defaults;
+    $stmt->bind_param('i', $barangayId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc() ?: [];
+    $stmt->close();
+
+    if (array_key_exists('auto_classify', $row))   $defaults['auto_classify'] = (int)$row['auto_classify'];
+    if (array_key_exists('allow_anonymous', $row)) $defaults['allow_anonymous'] = (int)$row['allow_anonymous'];
+    return $defaults;
+}
+
+
+/*
+ * LIVE ACCOUNT STATUS GATE
+ * Do not rely only on the role/status cached in $_SESSION. An admin may
+ * disable this resident while the session is still open on another device.
+ * Every resident complaint request re-checks the current users row first.
+ */
+$uid = (int)($user['id'] ?? 0);
+$accountStmt = $db->prepare(
+    'SELECT role, status, barangay_id FROM users WHERE id = ? LIMIT 1'
+);
+$accountStmt->bind_param('i', $uid);
+$accountStmt->execute();
+$liveAccount = $accountStmt->get_result()->fetch_assoc();
+$accountStmt->close();
+
+if (!$liveAccount) {
+    $_SESSION = [];
+    session_destroy();
+    out(false, [
+        'error'  => 'Your account is no longer available. Please contact your barangay office.',
+        'reason' => 'account_unavailable'
+    ], 403);
+}
+
+if (($liveAccount['status'] ?? '') !== 'active') {
+    $reason = ($liveAccount['status'] ?? '') === 'pending'
+        ? 'account_pending'
+        : 'account_disabled';
+    $message = $reason === 'account_pending'
+        ? 'Your account is awaiting approval from your barangay office.'
+        : 'Your account has been temporarily disabled by a barangay administrator. Please contact your barangay office for assistance.';
+
+    $_SESSION = [];
+    session_destroy();
+    out(false, ['error' => $message, 'reason' => $reason], 403);
+}
+
+if (($liveAccount['role'] ?? '') !== 'resident') {
+    out(false, [
+        'error'  => 'Your account no longer has resident access.',
+        'reason' => 'role_changed'
+    ], 403);
+}
+
+/* Refresh server-side scope from the live account record. */
+$barangay_id = (int)($liveAccount['barangay_id'] ?? 0);
+$_SESSION['user']['role']        = $liveAccount['role'];
+$_SESSION['user']['status']      = $liveAccount['status'];
+$_SESSION['user']['barangay_id'] = $barangay_id;
+
+if ($barangay_id <= 0) {
+    out(false, ['error' => 'No barangay on your account.'], 400);
+}
+
 /* ════════════════════════════════════════════════════
    GET ?action=my_complaints
    Returns ONLY the complaints submitted by this resident.
    Privacy: filtered server-side by submitted_by = own id.
 ════════════════════════════════════════════════════ */
 $action = $_GET['action'] ?? '';
+
+// Runtime settings are exposed only to the authenticated resident of this barangay.
+if ($action === 'runtime_settings') {
+    $settingsRow = getResidentRuntimeSettings($db, $barangay_id);
+    $db->close();
+    out(true, ['settings' => $settingsRow]);
+}
+
 if ($action === 'my_complaints') {
     $uid = (int)$user['id'];
     $stmt = $db->prepare(
@@ -59,11 +160,20 @@ if (!empty($input['website'])) {
     out(true, ['complaint_no' => 'RES-0000-00000']);
 }
 
+// Re-read runtime settings on every submission so UI settings cannot be bypassed.
+$runtimeSettings = getResidentRuntimeSettings($db, $barangay_id);
+$autoClassify   = (int)$runtimeSettings['auto_classify'];
+$allowAnonymous = (int)$runtimeSettings['allow_anonymous'];
+
 $incident_date = $input['incident_date'] ?? '';
 $incident_time = $input['incident_time'] ?: null;
 $location      = trim($input['location']    ?? '');
 $description   = trim($input['description'] ?? '');
-$complainant   = trim($input['complainant'] ?? '') ?: 'Anonymous';
+$complainantRaw = trim($input['complainant'] ?? '');
+if (!$allowAnonymous && $complainantRaw === '') {
+    out(false, ['error' => 'Anonymous complaints are currently disabled by your barangay. Please provide your name.'], 422);
+}
+$complainant   = $complainantRaw !== '' ? $complainantRaw : 'Anonymous';
 $affected      = isset($input['affected']) && $input['affected'] !== '' ? (int)$input['affected'] : 1;
 
 // AI classification results sent from resident.html
@@ -91,6 +201,11 @@ $priorityBadges = [
 
 $priority_badge = $priorityBadges[$priority] ?? 'b-green';
 $score          = $input['score']          ?? '';
+
+if (!$autoClassify) {
+    $category = 'Unclassified';
+    $confidence = 0;
+}
 
 if (!$incident_date || !$location || !$description)
     out(false, ['error' => 'Date, location, and description are required.'], 422);
@@ -159,7 +274,7 @@ $stmt->bind_param(
     $score,
     $priority,
     $priority_badge,
-    $$barangay_id,
+    $barangay_id,
     $uid
 );
 

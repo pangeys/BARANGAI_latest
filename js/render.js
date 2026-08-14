@@ -36,16 +36,8 @@ function renderDashboardDonut() {
       if (m) counts[m]++;
     });
   } else {
-    /* Real dataset proportions from training CSV (987 samples, 13 categories) */
-    Object.assign(counts, {
-      'Debt / Loan Dispute': 215, 'Physical Assault / Violence': 123,
-      'Land / Property Dispute': 120, 'Lost / Missing Property': 89,
-      'Threats / Intimidation': 68, 'Mediation / Follow-up Session': 59,
-      'Family / Domestic Dispute': 58, 'Neighbor / Community Dispute': 57,
-      'Property Damage / Vandalism': 52, 'Defamation / Online Harassment': 49,
-      'Theft / Robbery': 40, 'Animal-related Complaint': 29,
-      'Traffic Incident / Accident': 28,
-    });
+    /* Final 3,669-record modeling distribution (Chapter 4 source). */
+    DATASET_CONSOLIDATION.forEach(r => { counts[r.merged] = r.total; });
   }
 
   const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
@@ -474,8 +466,8 @@ function renderDetailNlpBars(complaint) {
   const result = classifyDescription(complaint.description || '');
   barsEl.innerHTML = CATEGORIES.map(cat => {
     const pct = cat === complaint.category
-      ? (complaint.confidence || result.scores[cat] || 70)
-      : (result.scores[cat] || Math.floor(Math.random() * 15) + 3);
+      ? (complaint.confidence || result.scores[cat] || 0)
+      : (result.scores[cat] ?? 0);
     return '<div class="conf-bar">' +
       '<span class="conf-label">' + cat + (cat === complaint.category ? ' ★' : '') + '</span>' +
       '<div class="conf-track"><div class="conf-fill" style="width:' + pct + '%;background:' +
@@ -522,7 +514,7 @@ function renderDetailTimeline(complaint) {
   if (!el) return;
   const events = [
     { dot: 'done', label: 'Complaint Filed',    meta: complaint.date + (complaint.time ? ' · ' + complaint.time : '') },
-    { dot: 'done', label: 'AI Classification',  meta: complaint.category + ' · ' + (complaint.confidence || '—') + '% confidence (SVM)' },
+    { dot: 'done', label: 'AI Classification',  meta: complaint.category + ' · ' + (complaint.confidence || '—') + '% relative SVM score' },
     { dot: complaint.status !== 'Open' ? 'done' : 'pend', label: 'Officer Assigned',
       meta: complaint.officer !== '—' ? complaint.officer : 'Pending assignment' },
     { dot: complaint.status === 'Resolved' ? 'done' : 'pend', label: 'Case Resolved',

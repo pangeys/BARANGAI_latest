@@ -5,8 +5,8 @@
    AHP weights, or NLP pipeline steps.
 
    ── Current dataset/model ──
-   6 KP categories (RA 7160), 3,716 real complaint records
-   SVM trained via Colab, exported as svm_model.json
+   6 KP categories (RA 7160), 3,669 final modeling records
+   Final SVM: LinearSVC + Word(1,3) and char_wb(3,6) TF-IDF
    Fuzzy AHP weights derived via Colab, exported as fuzzy_ahp_config.json
 ═══════════════════════════════════════════════════════ */
 
@@ -148,57 +148,86 @@ const CLASSIFY_RULES = [
   },
 ];
 
-/* ── Experiment results (from SVM Colab notebook) ── */
+/* ── Final Chapter 4 experiment results ──
+   Evaluation source of truth: locked 741-record test set after the
+   group-aware duplicate audit (0 identical texts crossing train/test).
+   The browser model export is used for inference; these constants are
+   the final evaluation results reported in Chapter 4. ── */
+const FINAL_MODEL_INFO = {
+  active_model: 'Support Vector Machine (LinearSVC)',
+  dataset_size: 3669,
+  training_size: 2928,
+  testing_size: 741,
+  categories: 6,
+  accuracy: 83.81,
+  precision: 84.05,
+  recall: 83.81,
+  f1: 83.77,
+  feature_configuration: 'W13_C36_1.0_1.0',
+  feature_extraction: 'Word TF-IDF (1,3) + char_wb TF-IDF (3,6)',
+  best_parameter: 'C = 0.5',
+  class_weight: 'balanced',
+  split: '80/20 group-aware stratified split',
+  duplicate_overlap: 0,
+};
+
+/* Bars use weighted F1 so all three models are compared on the
+   study's stated model-selection metric. */
 const MODEL_ACCURACY_BARS = [
-  { label: 'SVM (100% — best)', value: 86.29 },
-  { label: 'NB (100%)',         value: 76.08 },
-  { label: 'BiLSTM (100%)',     value: 73.79 },
+  { label: 'SVM (weighted F1 — selected)', value: 83.77 },
+  { label: 'Naive Bayes (weighted F1)',    value: 75.16 },
+  { label: 'Bi-LSTM (weighted F1)',        value: 71.22 },
 ];
 
 const DATASET_VERSIONS = [
-  { ver: '25%  (743 train)',  train: 743,  nb: 64.85, svm: 70.88, bi: 63.18, best: false },
-  { ver: '50%  (1486 train)', train: 1486, nb: 71.56, svm: 80.61, bi: 68.56, best: false },
-  { ver: '75%  (2229 train)', train: 2229, nb: 74.82, svm: 84.14, bi: 70.54, best: false },
-  { ver: '100% (2972 train)', train: 2972, nb: 76.02, svm: 86.26, bi: 74.11, best: true  },
+  { ver: '25%  (732 train)',  train: 732,  nb: 69.63, svm: 73.16, bi: 46.31, best: false },
+  { ver: '50%  (1464 train)', train: 1464, nb: 71.76, svm: 78.54, bi: 64.22, best: false },
+  { ver: '75%  (2196 train)', train: 2196, nb: 73.53, svm: 81.06, bi: 63.34, best: false },
+  { ver: '100% (2928 train)', train: 2928, nb: 75.16, svm: 83.77, bi: 71.22, best: true  },
 ];
 
 const MODEL_COMPARISON_V2 = [
-  { metric: 'Accuracy',   nb: '76.08%', svm: '86.29%', bi: '73.79%' },
-  { metric: 'Precision',  nb: '76.73%', svm: '86.37%', bi: '74.77%' },
-  { metric: 'Recall',     nb: '76.08%', svm: '86.29%', bi: '73.79%' },
-  { metric: 'F1-Score',   nb: '76.02%', svm: '86.26%', bi: '74.11%' },
-  { metric: 'Train Time', nb: '0.15s',  svm: '4.02s',  bi: '503.03s' },
-  { metric: 'Infer Time', nb: '0.0007s',svm: '0.0006s',bi: '3.52s'  },
+  { metric: 'Accuracy',   nb: '75.17%', svm: '83.81%', bi: '70.99%' },
+  { metric: 'Precision',  nb: '75.33%', svm: '84.05%', bi: '72.29%' },
+  { metric: 'Recall',     nb: '75.17%', svm: '83.81%', bi: '70.99%' },
+  { metric: 'F1-Score',   nb: '75.16%', svm: '83.77%', bi: '71.22%' },
+  { metric: 'Train Time', nb: '0.6199s', svm: '0.5135s', bi: '18.9820s' },
+  { metric: 'Infer Time', nb: '0.001004s', svm: '0.004017s', bi: '0.634181s' },
 ];
 
 const PER_CATEGORY_REPORT = [
-  { cat: 'Contract Disputes',       prec: '0.9293', rec: '0.8679', f1: '0.8976', sup: 106 },
-  { cat: 'Family Matters',          prec: '0.8487', rec: '0.8632', f1: '0.8559', sup: 117 },
-  { cat: 'Money/Debt Disputes',     prec: '0.8690', rec: '0.9265', f1: '0.8968', sup: 136 },
-  { cat: 'Neighbor Disputes',       prec: '0.8538', rec: '0.8222', f1: '0.8377', sup: 135 },
-  { cat: 'Petty Criminal Offenses', prec: '0.8571', rec: '0.7965', f1: '0.8257', sup: 113 },
-  { cat: 'Property Disputes',       prec: '0.8356', rec: '0.8905', f1: '0.8622', sup: 137 },
+  { cat: 'Neighbor Disputes',       prec: '0.8319', rec: '0.8462', f1: '0.8390', sup: 117 },
+  { cat: 'Money/Debt Disputes',     prec: '0.8714', rec: '0.8777', f1: '0.8746', sup: 139 },
+  { cat: 'Family Matters',          prec: '0.8615', rec: '0.7778', f1: '0.8175', sup: 144 },
+  { cat: 'Petty Criminal Offenses', prec: '0.7926', rec: '0.8629', f1: '0.8263', sup: 124 },
+  { cat: 'Property Disputes',       prec: '0.8707', rec: '0.7829', f1: '0.8245', sup: 129 },
+  { cat: 'Contract Disputes',       prec: '0.7921', rec: '0.9091', f1: '0.8466', sup: 88  },
 ];
 
+/* Final modeling distribution after invalid/malformed records and the
+   duplicate-aware preparation used for the final experiment. */
 const DATASET_CONSOLIDATION = [
-  { merged: 'Contract Disputes',       original: 'Contract/Agreement Disputes',            min: 0, total: 530 },
-  { merged: 'Family Matters',          original: 'Family/Domestic Disputes',               min: 0, total: 585 },
-  { merged: 'Money/Debt Disputes',     original: 'Money/Debt/Financial Disputes',          min: 0, total: 681 },
-  { merged: 'Neighbor Disputes',       original: 'Neighbor/Community Disputes',            min: 0, total: 675 },
-  { merged: 'Petty Criminal Offenses', original: 'Petty Criminal Offenses (RA 7160 §408)', min: 0, total: 563 },
-  { merged: 'Property Disputes',       original: 'Property/Land Disputes',                 min: 0, total: 682 },
+  { merged: 'Family Matters',          original: 'Family Matters',          min: 0, total: 680 },
+  { merged: 'Petty Criminal Offenses', original: 'Petty Criminal Offenses', min: 0, total: 663 },
+  { merged: 'Money/Debt Disputes',     original: 'Money/Debt Disputes',     min: 0, total: 648 },
+  { merged: 'Property Disputes',       original: 'Property Disputes',       min: 0, total: 639 },
+  { merged: 'Neighbor Disputes',       original: 'Neighbor Disputes',       min: 0, total: 569 },
+  { merged: 'Contract Disputes',       original: 'Contract Disputes',       min: 0, total: 470 },
 ];
 
-/* ── NLP preprocessing pipeline steps ── */
 const NLP_PIPELINE_STEPS = [
-  'Raw free-text complaint (Filipino/Taglish)',
-  'Lowercase + regex clean',
-  'Stop-word removal (Filipino + English)',
-  'Token filter (length > 1)',
-  'TF-IDF (1,2)-gram vectorization',
-  'LinearSVC classification → category',
+  'Raw complaint text (Filipino / English / Taglish)',
+  'Unicode NFKC normalization + lowercase',
+  'Word TF-IDF n-grams (1,3)',
+  'Character char_wb TF-IDF n-grams (3,6)',
+  'FeatureUnion (73,078 exported features)',
+  'LinearSVC (C=0.5, class_weight=balanced)',
+  'Predicted KP category',
   'Fuzzy AHP scoring → priority tier',
 ];
+
+/* No synthetic augmentation was used in the final modeling dataset. */
+const AUG_TECHNIQUES = [];
 
 /* ── Report types ── */
 const REPORT_TYPES = [
@@ -210,13 +239,6 @@ const REPORT_TYPES = [
 
 /* ── Status flow ── */
 const STATUS_FLOW = ['Open', 'In Progress', 'For Hearing', 'Resolved'];
-
-/* ── Augmentation techniques (documentation only) ── */
-const AUG_TECHNIQUES = [
-  'Random word deletion (12% probability on non-protected words)',
-  'Random word swap (1 pair per record)',
-  'Random word insertion (1 content word per record)',
-];
 
 /* ── Report items ── */
 const REPORT_ITEMS = [
@@ -236,9 +258,6 @@ const SETTINGS_FIELDS = [
 
 /* ── Settings toggles ── */
 const SETTINGS_TOGGLES = [
-  { name: 'Auto-classify on submission (SVM)',  desc: 'Use SVM (TF-IDF bigrams) to auto-classify when submitted',   on: true  },
-  { name: 'Allow anonymous complaint filing',   desc: 'Residents can submit without personal information',           on: true  },
-  { name: 'Confidence threshold flag (<70%)',   desc: 'Flag complaints below 70% confidence for manual review',      on: true  },
-  { name: 'Human-in-the-loop validation',       desc: 'Officers must validate AI classification before finalizing',  on: false },
-  { name: 'BiLSTM fallback classification',     desc: 'Use BiLSTM if SVM confidence is below threshold',            on: false },
+  { name: 'Automatic classification (final SVM)', desc: 'Classify submissions with the final Word + Character TF-IDF SVM', on: true },
+  { name: 'Allow anonymous complaint filing', desc: 'Residents may submit without providing a complainant name', on: true },
 ];

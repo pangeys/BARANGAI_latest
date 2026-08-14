@@ -381,6 +381,24 @@ function isAdministrativeRole(role){
 function showMsg(elId, type, text){ const el=$(elId); el.className='auth-msg '+type; el.textContent=text; }
 function clearMsg(elId){ $(elId).className='auth-msg'; $(elId).textContent=''; }
 
+/* Explain server-forced sign-outs, including live administrator disable. */
+(function showAccountNotice(){
+  const params = new URLSearchParams(location.search);
+  const notice = params.get('notice');
+  const messages = {
+    account_disabled: 'Your account has been temporarily disabled by a barangay administrator. You cannot submit or track complaints until your account is re-enabled. Please contact your barangay office for assistance.',
+    account_pending: 'Your account is awaiting approval from your barangay office. Please check back later.',
+    account_unavailable: 'Your account is no longer available. Please contact your barangay office.',
+    role_changed: 'Your account access has changed. Please sign in again to continue with your current role.',
+    session_expired: 'Your session has ended. Please sign in again.'
+  };
+
+  if (notice && messages[notice]) {
+    showMsg('loginMsg', 'err', messages[notice]);
+    history.replaceState({}, document.title, location.pathname);
+  }
+})();
+
 $('toSignup').addEventListener('click', function(){
   $('loginCard').classList.add('auth-hidden');
   $('signupCard').classList.remove('auth-hidden');

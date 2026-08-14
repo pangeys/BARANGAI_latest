@@ -1,57 +1,61 @@
 /* ═══════════════════════════════════════════════════════
-   BICTS — js/classifier.js
-   Real SVM classifier using exported TF-IDF + LinearSVC
-   weights from the Python notebook (6-category SVM, RA 7160 KP).
+   BarangAI — js/classifier.js
+   Production browser classifier for the exported final SVM package.
 
    Model file: data/svm_model.json
-   Contains:
-     classes    — 6 KP category names in label-encoder order
-     vocabulary — word/bigram → feature index (10,000 features)
-     idf        — IDF weights per feature
-     coef       — SVM decision weights [13 × 10000]
-     intercept  — SVM intercepts [13]
+   Export format:
+     model.classes       — 6 KP categories
+     model.coef          — LinearSVC coefficients [6 × 73,078]
+     model.intercept     — 6 LinearSVC intercepts
+     word_tfidf          — 40,000 Word TF-IDF features, n-grams (1,3)
+     char_tfidf          — 33,078 char_wb TF-IDF features, n-grams (3,6)
+     preprocessing       — Unicode NFKC normalization + lowercase
 
-   Pipeline mirrors the Python preprocessing exactly:
-     lowercase → strip punctuation → remove stop words
-     → min length >1 → TF-IDF (1,2)-gram → LinearSVC
+   IMPORTANT:
+   The two TF-IDF branches are L2-normalized independently and then
+   concatenated, matching scikit-learn FeatureUnion. Do not reintroduce
+   punctuation stripping or stop-word removal here: those are not part
+   of the exported final vectorizer used by this model artifact.
 
-   Fuzzy AHP config file: data/fuzzy_ahp_config.json
-   Contains: criteria_weights, severity_tfn, urgency_tfn,
-     frequency_tfn, affected_tfn, priority_tier_cutoffs,
-     historical_crossref_boost, consistency_ratio.
-   Falls back to the matching constants in data.js if this
-   file fails to load.
+   Fuzzy AHP remains loaded independently from:
+     data/fuzzy_ahp_config.json
 ═══════════════════════════════════════════════════════ */
 
-/* ── Model state ── */
-let _model    = null;   /* loaded from svm_model.json */
-let _modelErr = false;  /* true if load failed */
-let _ahp      = null;   /* loaded from fuzzy_ahp_config.json */
+let _model    = null;
+let _modelErr = false;
+let _ahp      = null;
 
-/* ── Load model on boot ── */
 function initClassifier() {
   return fetch('data/svm_model.json')
     .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
     .then(data => {
+      if (!data.model || !data.word_tfidf || !data.char_tfidf) {
+        throw new Error('Unsupported model export format');
+      }
       _model = data;
-      console.log('BARANGAI: SVM model loaded —', data.classes.length, 'KP categories (RA 7160)');
+      const wordN = data.word_tfidf.idf.length;
+      const charN = data.char_tfidf.idf.length;
+      console.log(
+        'BarangAI: final SVM loaded —',
+        data.model.classes.length, 'categories ·',
+        (wordN + charN).toLocaleString(), 'features'
+      );
     })
     .catch(err => {
       _modelErr = true;
-      console.warn('BICTS: Could not load svm_model.json, using keyword fallback.', err);
+      console.warn('BarangAI: Could not load final SVM export; using keyword fallback.', err);
     });
 }
 
-/* ── Load Fuzzy AHP config on boot ── */
 function initFuzzyAHP() {
   return fetch('data/fuzzy_ahp_config.json')
     .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
     .then(data => {
       _ahp = data;
-      console.log('BICTS: Fuzzy AHP config loaded — CR =', data.consistency_ratio.toFixed(4));
+      console.log('BarangAI: Fuzzy AHP config loaded — CR =', data.consistency_ratio.toFixed(4));
     })
     .catch(err => {
-      console.warn('BICTS: Could not load fuzzy_ahp_config.json, using data.js defaults.', err);
+      console.warn('BarangAI: Could not load fuzzy_ahp_config.json, using data.js defaults.', err);
       _ahp = {
         criteria_weights: AHP_WEIGHTS,
         severity_tfn: SEVERITY_TFN,
@@ -64,99 +68,117 @@ function initFuzzyAHP() {
     });
 }
 
-/* ══════════════════════════════════════════════════════
-   PREPROCESSING — must exactly match Python notebook:
-   lowercase → remove non-alphanum → collapse spaces
-   → remove stop words → remove tokens len ≤ 1
-══════════════════════════════════════════════════════ */
-const STOP_WORDS = new Set([
-  'ang','ng','sa','na','at','ay','si','ni','mga','ito',
-  'ko','mo','niya','kami','kayo','sila','ako','ikaw','siya',
-  'namin','natin','nila','aming','inyong','kanilang',
-  'the','a','an','is','was','are','were','in','on',
-  'to','of','and','for','with','by','from','that','this',
-  'it','he','she','they','we','you','i','be','been','have',
-  'has','had','do','did','will','would','could','should',
-  'may','might','can','not','no','so','but','or','if',
-]);
-
+/* Exact preprocessing declared by the browser export. */
 function preprocess(text) {
-  let t = String(text).toLowerCase();
-  t = t.replace(/[^a-z0-9\s]/g, ' ');
-  t = t.replace(/\s+/g, ' ').trim();
-  return t.split(' ')
-    .filter(w => w.length > 1 && !STOP_WORDS.has(w))
-    .join(' ');
+  let t = String(text == null ? '' : text);
+  if (_model?.preprocessing?.unicode_normalization && t.normalize) {
+    t = t.normalize(_model.preprocessing.unicode_normalization);
+  }
+  if (_model?.preprocessing?.lowercase !== false) t = t.toLowerCase();
+  return t;
 }
 
-/* ══════════════════════════════════════════════════════
-   TF-IDF (1,2)-gram vectoriser
-   Produces a sparse vector matching the trained vocab.
-══════════════════════════════════════════════════════ */
-function tfidfVectorize(text) {
-  const vocab = _model.vocabulary;
-  const idf   = _model.idf;
-  const n     = idf.length;
+/* sklearn's default word token pattern is conceptually \b\w\w+\b.
+   This Unicode-aware equivalent keeps letters, numbers, and underscore
+   and requires at least two characters. */
+function wordTokens(text) {
+  return text.match(/[\p{L}\p{N}_]{2,}/gu) || [];
+}
 
-  /* Count term frequencies for unigrams and bigrams */
-  const tf = new Float64Array(n);
-  const words = text.split(' ').filter(w => w.length > 0);
+function addCount(map, idx) {
+  map.set(idx, (map.get(idx) || 0) + 1);
+}
 
-  for (let i = 0; i < words.length; i++) {
-    /* unigram */
-    const w1 = words[i];
-    if (vocab[w1] !== undefined) tf[vocab[w1]]++;
+function normalizeSparse(tf, idf, weight) {
+  const values = new Map();
+  let normSq = 0;
+  tf.forEach((count, idx) => {
+    const scaled = (count > 0 ? 1 + Math.log(count) : 0) * idf[idx] * weight;
+    values.set(idx, scaled);
+    normSq += scaled * scaled;
+  });
+  const norm = Math.sqrt(normSq);
+  if (norm > 0) values.forEach((v, idx) => values.set(idx, v / norm));
+  return values;
+}
 
-    /* bigram */
-    if (i + 1 < words.length) {
-      const bg = w1 + ' ' + words[i + 1];
-      if (vocab[bg] !== undefined) tf[vocab[bg]]++;
+function wordTfidfSparse(text) {
+  const cfg = _model.word_tfidf;
+  const vocab = cfg.vocabulary;
+  const words = wordTokens(text);
+  const tf = new Map();
+  const minN = cfg.ngram_range[0], maxN = cfg.ngram_range[1];
+
+  for (let n = minN; n <= maxN; n++) {
+    for (let i = 0; i + n <= words.length; i++) {
+      const gram = words.slice(i, i + n).join(' ');
+      const idx = vocab[gram];
+      if (idx !== undefined) addCount(tf, idx);
     }
   }
+  return normalizeSparse(tf, cfg.idf, Number(cfg.weight ?? 1));
+}
 
-  /* Apply sublinear TF scaling: tf = 1 + log(tf) if tf > 0 */
-  for (let i = 0; i < n; i++) {
-    if (tf[i] > 0) tf[i] = 1 + Math.log(tf[i]);
+/* Mirrors sklearn TfidfVectorizer(analyzer='char_wb'). */
+function charWbCounts(text, cfg) {
+  const vocab = cfg.vocabulary;
+  const tf = new Map();
+  const normalized = text.replace(/\s+/gu, ' ');
+  const minN = cfg.ngram_range[0], maxN = cfg.ngram_range[1];
+
+  for (const rawWord of normalized.split(' ')) {
+    if (!rawWord) continue;
+    const w = ' ' + rawWord + ' ';
+    const wLen = w.length;
+    for (let n = minN; n <= maxN; n++) {
+      let offset = 0;
+      let gram = w.slice(offset, offset + n);
+      let idx = vocab[gram];
+      if (idx !== undefined) addCount(tf, idx);
+      while (offset + n < wLen) {
+        offset += 1;
+        gram = w.slice(offset, offset + n);
+        idx = vocab[gram];
+        if (idx !== undefined) addCount(tf, idx);
+      }
+      if (offset === 0) break;
+    }
   }
-
-  /* Multiply by IDF */
-  for (let i = 0; i < n; i++) {
-    tf[i] *= idf[i];
-  }
-
-  /* L2 normalise */
-  let norm = 0;
-  for (let i = 0; i < n; i++) norm += tf[i] * tf[i];
-  norm = Math.sqrt(norm);
-  if (norm > 0) for (let i = 0; i < n; i++) tf[i] /= norm;
-
   return tf;
 }
 
-/* ══════════════════════════════════════════════════════
-   LINEAR SVC DECISION
-   decision[k] = coef[k] · vec + intercept[k]
-   Predicted class = argmax(decision)
-══════════════════════════════════════════════════════ */
-function svmDecide(vec) {
-  const coef      = _model.coef;
-  const intercept = _model.intercept;
-  const nClasses  = _model.classes.length;
-  const nFeatures = vec.length;
+function charTfidfSparse(text) {
+  const cfg = _model.char_tfidf;
+  return normalizeSparse(charWbCounts(text, cfg), cfg.idf, Number(cfg.weight ?? 1));
+}
 
+function tfidfVectorize(text) {
+  const word = wordTfidfSparse(text);
+  const char = charTfidfSparse(text);
+  const wordN = _model.word_tfidf.idf.length;
+  const combined = new Map(word);
+  char.forEach((v, idx) => combined.set(wordN + idx, v));
+  return combined;
+}
+
+function svmDecide(vec) {
+  const coef = _model.model.coef;
+  const intercept = _model.model.intercept;
+  const nClasses = _model.model.classes.length;
   const scores = new Float64Array(nClasses);
+
   for (let k = 0; k < nClasses; k++) {
     let dot = intercept[k];
     const ck = coef[k];
-    for (let i = 0; i < nFeatures; i++) {
-      if (vec[i] !== 0) dot += ck[i] * vec[i];
-    }
+    vec.forEach((v, idx) => { dot += ck[idx] * v; });
     scores[k] = dot;
   }
   return scores;
 }
 
-/* Convert raw SVM scores to pseudo-probabilities via softmax */
+/* LinearSVC does not output calibrated probabilities. Softmax is used only
+   to provide a relative score distribution for the UI; the class prediction
+   itself is always the argmax of the raw SVM decision function. */
 function softmax(scores) {
   const max = Math.max(...scores);
   const exp = Array.from(scores).map(s => Math.exp(s - max));
@@ -164,69 +186,53 @@ function softmax(scores) {
   return exp.map(e => e / sum);
 }
 
-/* ══════════════════════════════════════════════════════
-   PUBLIC: classifyDescription(text)
-   Returns { cat, conf, scores }
-     cat    — predicted category string
-     conf   — confidence % (0–99)
-     scores — { category: pct } for all 6 KP classes
-══════════════════════════════════════════════════════ */
 function classifyDescription(desc) {
-  /* Fall back to keyword rules if model not loaded */
   if (!_model) return classifyKeywords(desc);
 
-  const clean  = preprocess(desc);
-  const vec    = tfidfVectorize(clean);
-  const raw    = svmDecide(vec);
-  const probs  = softmax(raw);
+  const clean = preprocess(desc);
+  const vec = tfidfVectorize(clean);
+  const raw = svmDecide(vec);
 
-  /* Find best class */
   let bestIdx = 0;
-  for (let i = 1; i < probs.length; i++) {
-    if (probs[i] > probs[bestIdx]) bestIdx = i;
+  for (let i = 1; i < raw.length; i++) {
+    if (raw[i] > raw[bestIdx]) bestIdx = i;
   }
 
-  const cat  = _model.classes[bestIdx];
+  const probs = softmax(raw);
+  const classes = _model.model.classes;
+  const cat = classes[bestIdx];
   const conf = Math.min(Math.round(probs[bestIdx] * 100), 99);
-
-  /* Build scores map for confidence bars */
   const scores = {};
-  _model.classes.forEach((c, i) => {
-    scores[c] = Math.round(probs[i] * 100);
-  });
+  classes.forEach((c, i) => { scores[c] = Math.round(probs[i] * 100); });
 
-  return { cat, conf, scores };
+  return { cat, conf, scores, decisionScores: Array.from(raw), scoreType: 'relative' };
 }
 
-/* ══════════════════════════════════════════════════════
-   KEYWORD FALLBACK (used only if model fails to load)
-   Rules kept in data.js as CLASSIFY_RULES
-══════════════════════════════════════════════════════ */
 function classifyKeywords(desc) {
-  const lower    = desc.toLowerCase();
-  let bestCat    = CATEGORIES[0];
-  let bestConf   = 55;
-  let bestHits   = 0;
-  const rawHits  = {};
+  const lower = String(desc || '').toLowerCase();
+  let bestCat = CATEGORIES[0];
+  let bestConf = 55;
+  let bestHits = 0;
+  const rawHits = {};
 
   for (const rule of CLASSIFY_RULES) {
     const hits = rule.words.filter(w => lower.includes(w)).length;
     rawHits[rule.cat] = hits;
     if (hits > bestHits) {
       bestHits = hits;
-      bestCat  = rule.cat;
+      bestCat = rule.cat;
       bestConf = Math.min(rule.conf + Math.min(hits * 2, 6), 99);
     }
   }
 
-  const total  = Object.values(rawHits).reduce((a, b) => a + b, 0) || 1;
+  const total = Object.values(rawHits).reduce((a, b) => a + b, 0) || 1;
   const scores = {};
   for (const cat of CATEGORIES) {
     scores[cat] = cat === bestCat
       ? bestConf
       : Math.max(Math.round((rawHits[cat] / total) * (bestConf - 10)), 3);
   }
-  return { cat: bestCat, conf: bestConf, scores };
+  return { cat: bestCat, conf: bestConf, scores, scoreType: 'fallback' };
 }
 
 /* ══════════════════════════════════════════════════════

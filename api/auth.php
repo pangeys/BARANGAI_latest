@@ -1215,7 +1215,65 @@ case 'barangays':
 
 // ── SESSION CHECK ──────────────────────────────────────────────────
 case 'me':
-    out(true, ['user' => $_SESSION['user'] ?? null]);
+    /*
+     * IMPORTANT: never trust only the PHP session here.
+     * An administrator may disable an account while that resident is
+     * already signed in on another device. Re-check the database on every
+     * session heartbeat so account changes take effect without logout.
+     */
+    $sessionUser = $_SESSION['user'] ?? null;
+
+    if (!$sessionUser || empty($sessionUser['id'])) {
+        out(true, ['user' => null]);
+    }
+
+    $sessionUserId = (int)$sessionUser['id'];
+    $stmt = $db->prepare(
+        'SELECT id, full_name, role, status, barangay_id
+           FROM users
+          WHERE id = ?
+          LIMIT 1'
+    );
+    $stmt->bind_param('i', $sessionUserId);
+    $stmt->execute();
+    $liveUser = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$liveUser) {
+        $_SESSION = [];
+        session_destroy();
+        out(false, [
+            'error'  => 'Your account is no longer available. Please contact your barangay office.',
+            'reason' => 'account_unavailable'
+        ], 403);
+    }
+
+    if (($liveUser['status'] ?? '') !== 'active') {
+        $reason = ($liveUser['status'] ?? '') === 'pending'
+            ? 'account_pending'
+            : 'account_disabled';
+        $message = $reason === 'account_pending'
+            ? 'Your account is awaiting approval from your barangay office.'
+            : 'Your account has been temporarily disabled by a barangay administrator. Please contact your barangay office for assistance.';
+
+        $_SESSION = [];
+        session_destroy();
+
+        out(false, [
+            'error'  => $message,
+            'reason' => $reason
+        ], 403);
+    }
+
+    /* Keep important session fields synchronized with the live account. */
+    $_SESSION['user']['name']        = $liveUser['full_name'];
+    $_SESSION['user']['role']        = $liveUser['role'];
+    $_SESSION['user']['barangay_id'] = $liveUser['barangay_id'] === null
+        ? null
+        : (int)$liveUser['barangay_id'];
+    $_SESSION['user']['status']      = $liveUser['status'];
+
+    out(true, ['user' => $_SESSION['user']]);
 
 
 // ── LOGOUT ────────────────────────────────────────────────────────

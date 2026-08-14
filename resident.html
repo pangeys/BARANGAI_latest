@@ -285,20 +285,102 @@
 <script>
 const AUTH_API = 'api/auth.php';
 const SUB_API  = 'api/submit_complaint.php';
+let RESIDENT_RUNTIME_SETTINGS = { auto_classify: true, allow_anonymous: true };
+
+/* ── live resident account guard ────────────────────────────────
+   A resident may be disabled by an administrator on another device.
+   Poll the authoritative server session/account state while this portal
+   is open. Server APIs independently enforce the same rule, so even the
+   short interval between checks cannot be used to submit a complaint.
+──────────────────────────────────────────────────────────────── */
+let _accountGuardTimer = null;
+let _accountGuardBusy  = false;
+
+function redirectForAccountState(reason){
+  const known = ['account_disabled','account_pending','account_unavailable','role_changed'];
+  const safeReason = known.includes(reason) ? reason : 'session_expired';
+  location.replace('login.html?notice=' + encodeURIComponent(safeReason));
+}
+
+async function checkResidentAccount(){
+  if (_accountGuardBusy) return;
+  _accountGuardBusy = true;
+  try {
+    const r = await fetch(AUTH_API + '?action=me&_=' + Date.now(), {
+      credentials: 'include',
+      cache: 'no-store'
+    });
+    let d = null;
+    try { d = await r.json(); } catch(e) {}
+
+    if (!r.ok || !d || !d.ok || !d.user) {
+      if (d && d.reason) redirectForAccountState(d.reason);
+      else if (r.status === 401 || r.status === 403) redirectForAccountState('session_expired');
+      return;
+    }
+
+    if (d.user.role !== 'resident') {
+      redirectForAccountState('role_changed');
+    }
+  } catch(e) {
+    // A temporary network interruption should not force-log the resident out.
+  } finally {
+    _accountGuardBusy = false;
+  }
+}
+
+function startResidentAccountGuard(){
+  if (_accountGuardTimer) clearInterval(_accountGuardTimer);
+  checkResidentAccount();
+  _accountGuardTimer = setInterval(checkResidentAccount, 2500);
+
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden) checkResidentAccount();
+  });
+  window.addEventListener('focus', checkResidentAccount);
+}
 
 /* ── session check + load SVM model ── */
 async function init(){
   let user = null;
   try {
-    const r = await fetch(AUTH_API + '?action=me');
+    const r = await fetch(AUTH_API + '?action=me&_=' + Date.now(), {
+      credentials:'include',
+      cache:'no-store'
+    });
     const d = await r.json();
-    user = d.ok ? d.user : null;
+    if (!r.ok || !d.ok) {
+      if (d && d.reason) redirectForAccountState(d.reason);
+      return;
+    }
+    user = d.user || null;
   } catch(e){}
 
-  if (!user)                 { location.href = 'login.html'; return; }
-  if (user.role === 'admin') { location.href = 'index.html'; return; }
+  if (!user)                     { location.replace('login.html?notice=session_expired'); return; }
+  if (user.role !== 'resident')  { redirectForAccountState('role_changed'); return; }
 
   window.CURRENT_USER = user;
+
+  // Load barangay runtime settings that are enforced again server-side.
+  try {
+    const sr = await fetch(SUB_API + '?action=runtime_settings', { credentials:'include' });
+    const sd = await sr.json();
+    if (sd.ok && sd.settings) {
+      RESIDENT_RUNTIME_SETTINGS.auto_classify = !!Number(sd.settings.auto_classify);
+      RESIDENT_RUNTIME_SETTINGS.allow_anonymous = !!Number(sd.settings.allow_anonymous);
+    }
+  } catch(e) {
+    console.warn('Could not load resident runtime settings; using safe defaults.', e);
+  }
+
+  const nameInput = document.getElementById('f_name');
+  const nameLabel = nameInput?.closest('.field')?.querySelector('.label');
+  const anonNote  = nameInput?.closest('.field')?.querySelector('.anon-note');
+  if (!RESIDENT_RUNTIME_SETTINGS.allow_anonymous) {
+    if (nameLabel) nameLabel.innerHTML = 'Your Name <span>*</span>';
+    if (nameInput) nameInput.placeholder = 'Required by your barangay';
+    if (anonNote) anonNote.textContent = 'Your barangay currently requires a complainant name for submissions.';
+  }
 
   // fill header
   document.getElementById('resName').textContent  = user.name;
@@ -309,12 +391,20 @@ async function init(){
   // load SVM model + Fuzzy AHP config
   if (typeof initClassifier === 'function') {
     initClassifier().then(() => {
-      document.getElementById('aiHint').classList.add('show');
+      const hint = document.getElementById('aiHint');
+      if (hint) {
+        hint.textContent = RESIDENT_RUNTIME_SETTINGS.auto_classify
+          ? '🤖 Final SVM classification is enabled. The displayed score is relative, not a calibrated probability.'
+          : 'ℹ️ Automatic classification is currently disabled by your barangay.';
+        hint.classList.add('show');
+      }
     });
   }
   if (typeof initFuzzyAHP === 'function') {
     initFuzzyAHP();
   }
+
+  startResidentAccountGuard();
 }
 
 /* ── view toggle (submit vs track) ── */
@@ -439,14 +529,15 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   if (!date)     { showMsg('err', 'Please select the date of the incident.'); return; }
   if (!location) { showMsg('err', 'Please enter the location of the incident.'); return; }
   if (!desc)     { showMsg('err', 'Please describe your complaint.'); return; }
+  if (!RESIDENT_RUNTIME_SETTINGS.allow_anonymous && !name) { showMsg('err', 'Please enter your name. Anonymous complaints are currently disabled by your barangay.'); return; }
 
   document.getElementById('submitBtn').disabled    = true;
-  document.getElementById('submitBtn').textContent = 'Classifying & Submitting…';
+  document.getElementById('submitBtn').textContent = RESIDENT_RUNTIME_SETTINGS.auto_classify ? 'Classifying & Submitting…' : 'Submitting…';
 
   // ── run SVM classifier ──
   let category = '', confidence = 0, priority = 'Low', priority_badge = 'b-gray', score = '0';
   try {
-    if (typeof classifyDescription === 'function') {
+    if (RESIDENT_RUNTIME_SETTINGS.auto_classify && typeof classifyDescription === 'function') {
       const classResult = classifyDescription(desc);
       const ahpResult   = computeAHPScore(classResult.cat, parseInt(affected) || 1, desc);
       const priInfo     = priorityLabel(ahpResult.score);
@@ -464,6 +555,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
     const res = await fetch(SUB_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         incident_date:  date,
         incident_time:  time || null,
@@ -480,6 +572,11 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
       })
     });
     const data = await res.json();
+
+    if (!res.ok && data && data.reason) {
+      redirectForAccountState(data.reason);
+      return;
+    }
 
     if (data.ok) {
       document.getElementById('successRef').textContent = data.complaint_no;
