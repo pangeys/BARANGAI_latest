@@ -2,8 +2,13 @@
    BarangAI — js/classifier.js
    Production browser classifier for the exported final SVM package.
 
-   Model file: data/svm_model.json
-   Export format:
+   InfinityFree-safe split model files:
+     data/svm_model_core.json  — classes, coefficients, intercepts
+     data/svm_word_tfidf.json  — Word TF-IDF branch, n-grams (1,3)
+     data/svm_char_tfidf.json  — char_wb TF-IDF branch, n-grams (3,6)
+     data/svm_meta.json        — preprocessing and model metadata
+
+   Reconstructed export format in memory:
      model.classes       — 6 KP categories
      model.coef          — LinearSVC coefficients [6 × 73,078]
      model.intercept     — 6 LinearSVC intercepts
@@ -25,25 +30,39 @@ let _model    = null;
 let _modelErr = false;
 let _ahp      = null;
 
+function _fetchJson(path) {
+  return fetch(path).then(r => {
+    if (!r.ok) throw new Error(path + ' returned HTTP ' + r.status);
+    return r.json();
+  });
+}
+
 function initClassifier() {
-  return fetch('data/svm_model.json')
-    .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
-    .then(data => {
+  return Promise.all([
+    _fetchJson('data/svm_model_core.json'),
+    _fetchJson('data/svm_word_tfidf.json'),
+    _fetchJson('data/svm_char_tfidf.json'),
+    _fetchJson('data/svm_meta.json'),
+  ])
+    .then(([model, word_tfidf, char_tfidf, meta]) => {
+      const data = { ...meta, model, word_tfidf, char_tfidf };
       if (!data.model || !data.word_tfidf || !data.char_tfidf) {
-        throw new Error('Unsupported model export format');
+        throw new Error('Unsupported split model export format');
       }
       _model = data;
+      _modelErr = false;
       const wordN = data.word_tfidf.idf.length;
       const charN = data.char_tfidf.idf.length;
       console.log(
-        'BarangAI: final SVM loaded —',
+        'BarangAI: final SVM loaded from 4 split files —',
         data.model.classes.length, 'categories ·',
         (wordN + charN).toLocaleString(), 'features'
       );
     })
     .catch(err => {
       _modelErr = true;
-      console.warn('BarangAI: Could not load final SVM export; using keyword fallback.', err);
+      _model = null;
+      console.warn('BarangAI: Could not load final split SVM export; using keyword fallback.', err);
     });
 }
 
