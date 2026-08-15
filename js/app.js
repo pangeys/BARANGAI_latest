@@ -540,7 +540,12 @@ function showScreen(id, navEl) {
 }
 
 function doLogout() {
-  fetch('api/auth.php?action=logout').finally(() => location.href = 'login.html');
+  fetch('api/auth.php?action=logout', {
+    credentials:'include',
+    cache:'no-store'
+  }).finally(() => {
+    location.replace('login.html');
+  });
 }
 
 /* ══════════════════════════════════════════════════════

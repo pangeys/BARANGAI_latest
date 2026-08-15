@@ -1936,9 +1936,12 @@
 
   try {
     const r = await fetch(
-      'api/auth.php?action=me',
-      { credentials:'include' }
-    );
+    'api/auth.php?action=me&_=' + Date.now(),
+    {
+      credentials:'include',
+      cache:'no-store'
+    }
+  );
 
     const d = await r.json();
     user = d.ok ? d.user : null;
@@ -1946,7 +1949,7 @@
   } catch(e) {}
 
   if (!user) {
-    location.href = 'login.html';
+    location.replace('login.html?notice=session_expired');
     return;
   }
 
@@ -1958,7 +1961,7 @@
     user.role !== 'admin' &&
     user.role !== 'super_admin'
   ) {
-    location.href = 'resident.html';
+    location.replace('resident.html');
     return;
   }
 
@@ -2957,6 +2960,13 @@ function escapeSaHtml(value){
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+window.addEventListener('pageshow', function(event) {
+  if (event.persisted) {
+    location.reload();
+  }
+});
+
 </script>
 </body>
 </html>
