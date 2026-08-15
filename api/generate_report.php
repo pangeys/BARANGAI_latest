@@ -221,7 +221,19 @@ if (!$stmt) {
     report_error('Could not prepare report query', 500);
 }
 
-$stmt->bind_param($types, ...$params);
+/*
+ * Bind only when the report query actually
+ * contains placeholders.
+ *
+ * Super Admin scope=all with no date filters
+ * has no parameters at all.
+ */
+if (!empty($params)) {
+    $stmt->bind_param(
+        $types,
+        ...$params
+    );
+}
 
 if (!$stmt->execute()) {
     $stmt->close();
@@ -357,76 +369,399 @@ class BICTSReport extends FPDF {
 
 // ── 1. Classification Accuracy Report ──
 function buildClassificationReport($pdf, $complaints) {
-    $pdf->SectionTitle('SVM Model Performance — Per Category (v2, 200/cat)');
 
-    // Stat boxes
+    $pdf->SectionTitle(
+        'Final SVM Model Performance — Locked Test Set'
+    );
+
+
+    /*
+     * FINAL CHAPTER 4 RESULTS
+     *
+     * Final modeling records: 3,669
+     * Training records: 2,928
+     * Locked test records: 741
+     * Exact train-test text overlap: 0
+     *
+     * Selected model:
+     * LinearSVC
+     * Word TF-IDF (1,3)
+     * char_wb TF-IDF (3,6)
+     * C = 0.5
+     */
     $pdf->SetX(10);
-    $pdf->StatBox('Overall Accuracy', '95.45%', [27, 122, 74]);
-    $pdf->StatBox('F1-Score (Weighted)', '95.30%', [30, 95, 168]);
-    $pdf->StatBox('Test Set Size', '22 samples', [80, 60, 160]);
+
+    $pdf->StatBox(
+        'Accuracy',
+        '83.81%',
+        [27, 122, 74]
+    );
+
+    $pdf->StatBox(
+        'Weighted F1',
+        '83.77%',
+        [30, 95, 168]
+    );
+
+    $pdf->StatBox(
+        'Locked Test Set',
+        '741',
+        [80, 60, 160]
+    );
+
     $pdf->Ln(24);
 
-    // Per-category table
-    $cols = [
-        ['w' => 72, 'label' => 'Category'],
-        ['w' => 25, 'label' => 'Precision', 'align' => 'C'],
-        ['w' => 25, 'label' => 'Recall',    'align' => 'C'],
-        ['w' => 25, 'label' => 'F1-Score',  'align' => 'C'],
-        ['w' => 20, 'label' => 'Support',   'align' => 'C'],
-        ['w' => 23, 'label' => 'Grade',     'align' => 'C'],
-    ];
-    $pdf->TableHeader($cols);
 
-    $perCat = [
-        ['cat' => 'Accident & Traffic',             'prec' => '1.0000', 'rec' => '1.0000', 'f1' => '1.0000', 'sup' => 2],
-        ['cat' => 'Defamation & Cyberbullying',     'prec' => '1.0000', 'rec' => '1.0000', 'f1' => '1.0000', 'sup' => 2],
-        ['cat' => 'Environmental & Infrastructure', 'prec' => '1.0000', 'rec' => '1.0000', 'f1' => '1.0000', 'sup' => 2],
-        ['cat' => 'Financial & Fraud',              'prec' => '1.0000', 'rec' => '1.0000', 'f1' => '1.0000', 'sup' => 4],
-        ['cat' => 'Lost Items & Missing Person',    'prec' => '1.0000', 'rec' => '1.0000', 'f1' => '1.0000', 'sup' => 2],
-        ['cat' => 'Theft & Property',               'prec' => '1.0000', 'rec' => '0.7500', 'f1' => '0.8571', 'sup' => 4],
-        ['cat' => 'Threat & Violence',              'prec' => '0.8571', 'rec' => '1.0000', 'f1' => '0.9231', 'sup' => 6],
+    /*
+     * Overall metrics.
+     */
+    $pdf->SectionTitle(
+        'Overall Evaluation Metrics'
+    );
+
+    $overallCols = [
+        [
+            'w' => 65,
+            'label' => 'Metric'
+        ],
+        [
+            'w' => 45,
+            'label' => 'Result',
+            'align' => 'C'
+        ],
+        [
+            'w' => 80,
+            'label' => 'Evaluation',
+            'align' => 'C'
+        ],
     ];
 
-    foreach ($perCat as $i => $r) {
-        $f1    = (float)$r['f1'];
-        $grade = $f1 >= 0.95 ? 'Excellent' : ($f1 >= 0.85 ? 'Good' : 'Fair');
+    $pdf->TableHeader($overallCols);
+
+    $overall = [
+        [
+            'Accuracy',
+            '83.81%',
+            'Locked test set'
+        ],
+        [
+            'Weighted Precision',
+            '84.05%',
+            'Locked test set'
+        ],
+        [
+            'Weighted Recall',
+            '83.81%',
+            'Locked test set'
+        ],
+        [
+            'Weighted F1-Score',
+            '83.77%',
+            'Model-selection metric'
+        ],
+        [
+            'Training Records',
+            '2,928',
+            '100% training data'
+        ],
+        [
+            'Testing Records',
+            '741',
+            'Locked test data'
+        ],
+        [
+            'Exact Text Overlap',
+            '0',
+            'Train vs test'
+        ],
+    ];
+
+    foreach ($overall as $i => $r) {
+
         $pdf->TableRow([
-            ['w' => 72, 'v' => $r['cat']],
-            ['w' => 25, 'v' => $r['prec'], 'a' => 'C'],
-            ['w' => 25, 'v' => $r['rec'],  'a' => 'C'],
-            ['w' => 25, 'v' => $r['f1'],   'a' => 'C'],
-            ['w' => 20, 'v' => $r['sup'],  'a' => 'C'],
-            ['w' => 23, 'v' => $grade,     'a' => 'C'],
+            [
+                'w' => 65,
+                'v' => $r[0]
+            ],
+            [
+                'w' => 45,
+                'v' => $r[1],
+                'a' => 'C'
+            ],
+            [
+                'w' => 80,
+                'v' => $r[2],
+                'a' => 'C'
+            ],
         ], $i);
     }
+
 
     $pdf->Ln(8);
-    $pdf->SectionTitle('Model Comparison — v2 Best Configuration');
 
-    $cols2 = [
-        ['w' => 50, 'label' => 'Metric'],
-        ['w' => 40, 'label' => 'Naive Bayes', 'align' => 'C'],
-        ['w' => 40, 'label' => 'SVM (Best)', 'align' => 'C'],
-        ['w' => 40, 'label' => 'BiLSTM',     'align' => 'C'],
-    ];
-    $pdf->TableHeader($cols2);
 
-    $comparison = [
-        ['Accuracy',   '77.27%', '95.45%', '81.82%'],
-        ['Precision',  '78.03%', '96.10%', '86.36%'],
-        ['Recall',     '77.27%', '95.45%', '81.82%'],
-        ['F1-Score',   '76.36%', '95.30%', '80.91%'],
-        ['Train Time', '0.003s', '0.013s', '197.28s'],
-        ['Infer Time', '~0s',    '0.0002s','~0.01s'],
+    /*
+     * Per-category SVM performance.
+     */
+    $pdf->SectionTitle(
+        'SVM Performance by Complaint Category'
+    );
+
+    $cols = [
+        [
+            'w' => 72,
+            'label' => 'Category'
+        ],
+        [
+            'w' => 25,
+            'label' => 'Precision',
+            'align' => 'C'
+        ],
+        [
+            'w' => 25,
+            'label' => 'Recall',
+            'align' => 'C'
+        ],
+        [
+            'w' => 25,
+            'label' => 'F1-Score',
+            'align' => 'C'
+        ],
+        [
+            'w' => 20,
+            'label' => 'Support',
+            'align' => 'C'
+        ],
     ];
-    foreach ($comparison as $i => $r) {
+
+    $pdf->TableHeader($cols);
+
+
+    $perCat = [
+
+        [
+            'cat'  => 'Neighbor Disputes',
+            'prec' => '83.19%',
+            'rec'  => '84.62%',
+            'f1'   => '83.90%',
+            'sup'  => 117
+        ],
+
+        [
+            'cat'  => 'Money/Debt Disputes',
+            'prec' => '87.14%',
+            'rec'  => '87.77%',
+            'f1'   => '87.46%',
+            'sup'  => 139
+        ],
+
+        [
+            'cat'  => 'Family Matters',
+            'prec' => '86.15%',
+            'rec'  => '77.78%',
+            'f1'   => '81.75%',
+            'sup'  => 144
+        ],
+
+        [
+            'cat'  => 'Petty Criminal Offenses',
+            'prec' => '79.26%',
+            'rec'  => '86.29%',
+            'f1'   => '82.63%',
+            'sup'  => 124
+        ],
+
+        [
+            'cat'  => 'Property Disputes',
+            'prec' => '87.07%',
+            'rec'  => '78.29%',
+            'f1'   => '82.45%',
+            'sup'  => 129
+        ],
+
+        [
+            'cat'  => 'Contract Disputes',
+            'prec' => '79.21%',
+            'rec'  => '90.91%',
+            'f1'   => '84.66%',
+            'sup'  => 88
+        ],
+    ];
+
+
+    foreach ($perCat as $i => $r) {
+
         $pdf->TableRow([
-            ['w' => 50, 'v' => $r[0]],
-            ['w' => 40, 'v' => $r[1], 'a' => 'C'],
-            ['w' => 40, 'v' => $r[2], 'a' => 'C'],
-            ['w' => 40, 'v' => $r[3], 'a' => 'C'],
+            [
+                'w' => 72,
+                'v' => $r['cat']
+            ],
+            [
+                'w' => 25,
+                'v' => $r['prec'],
+                'a' => 'C'
+            ],
+            [
+                'w' => 25,
+                'v' => $r['rec'],
+                'a' => 'C'
+            ],
+            [
+                'w' => 25,
+                'v' => $r['f1'],
+                'a' => 'C'
+            ],
+            [
+                'w' => 20,
+                'v' => $r['sup'],
+                'a' => 'C'
+            ],
         ], $i);
     }
+
+
+    $pdf->Ln(8);
+
+
+    /*
+     * Final three-model comparison.
+     */
+    $pdf->SectionTitle(
+        'Final Model Comparison — 100% Training Data'
+    );
+
+    $cols2 = [
+        [
+            'w' => 50,
+            'label' => 'Metric'
+        ],
+        [
+            'w' => 40,
+            'label' => 'Naive Bayes',
+            'align' => 'C'
+        ],
+        [
+            'w' => 40,
+            'label' => 'SVM',
+            'align' => 'C'
+        ],
+        [
+            'w' => 40,
+            'label' => 'Bi-LSTM',
+            'align' => 'C'
+        ],
+    ];
+
+    $pdf->TableHeader($cols2);
+
+
+    $comparison = [
+
+        [
+            'Accuracy',
+            '75.17%',
+            '83.81%',
+            '70.99%'
+        ],
+
+        [
+            'Precision',
+            '75.33%',
+            '84.05%',
+            '72.29%'
+        ],
+
+        [
+            'Recall',
+            '75.17%',
+            '83.81%',
+            '70.99%'
+        ],
+
+        [
+            'Weighted F1',
+            '75.16%',
+            '83.77%',
+            '71.22%'
+        ],
+
+        [
+            'Train Time',
+            '0.6199s',
+            '0.5135s',
+            '18.9820s'
+        ],
+
+        [
+            'Infer Time',
+            '0.001004s',
+            '0.004017s',
+            '0.634181s'
+        ],
+    ];
+
+
+    foreach ($comparison as $i => $r) {
+
+        $pdf->TableRow([
+            [
+                'w' => 50,
+                'v' => $r[0]
+            ],
+            [
+                'w' => 40,
+                'v' => $r[1],
+                'a' => 'C'
+            ],
+            [
+                'w' => 40,
+                'v' => $r[2],
+                'a' => 'C'
+            ],
+            [
+                'w' => 40,
+                'v' => $r[3],
+                'a' => 'C'
+            ],
+        ], $i);
+    }
+
+
+    $pdf->Ln(8);
+
+
+    /*
+     * Selected configuration.
+     */
+    $pdf->SectionTitle(
+        'Selected Production Configuration'
+    );
+
+    $pdf->SetFont(
+        'Arial',
+        '',
+        9
+    );
+
+    $pdf->MultiCell(
+        0,
+        6,
+        $pdf->safeText(
+            'Selected model: Support Vector Machine (LinearSVC)' .
+            "\n" .
+            'Feature extraction: Word TF-IDF n-grams (1,3) + char_wb TF-IDF n-grams (3,6)' .
+            "\n" .
+            'LinearSVC C: 0.5' .
+            "\n" .
+            'Class weighting: balanced' .
+            "\n" .
+            'Final modeling dataset: 3,669 real complaint records' .
+            "\n" .
+            'Complaint categories: 6' .
+            "\n" .
+            'Train-test exact-text overlap: 0 records'
+        )
+    );
 }
 
 // ── 2. Complaint Volume Report ──

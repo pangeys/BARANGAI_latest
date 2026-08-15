@@ -1,6 +1,8 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 require_once 'config.php';
+require_once 'totp.php';
+require_once 'security.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -345,6 +347,500 @@ case 'update_user':
         'message' => 'User updated.',
         'changed' => $affected > 0
     ]);
+case 'secure_super_admin_role':
+
+    $admin = require_admin();
+
+    /*
+     * Only an already-authenticated Super Admin
+     * may use this privileged endpoint.
+     */
+    if (!is_super_admin($admin)) {
+        out(false, [
+            'error' => 'Super Administrator access required.'
+        ], 403);
+    }
+
+
+    $targetId =
+        (int)($input['id'] ?? 0);
+
+    $operation =
+        trim($input['operation'] ?? '');
+
+    $password =
+        (string)($input['current_password'] ?? '');
+
+    $code =
+        preg_replace(
+            '/\D/',
+            '',
+            (string)($input['totp_code'] ?? '')
+        );
+
+    $barangayId =
+        (int)($input['barangay_id'] ?? 0);
+
+
+    if ($targetId <= 0) {
+        out(false, [
+            'error' => 'Missing target user.'
+        ], 422);
+    }
+
+
+    if (
+        !in_array(
+            $operation,
+            ['promote', 'demote'],
+            true
+        )
+    ) {
+        out(false, [
+            'error' => 'Invalid privileged role operation.'
+        ], 422);
+    }
+
+
+    if ($password === '') {
+        out(false, [
+            'error' => 'Enter your current password.'
+        ], 422);
+    }
+
+
+    if (strlen($code) !== 6) {
+        out(false, [
+            'error' =>
+                'Enter the 6-digit code from your authenticator app.'
+        ], 422);
+    }
+
+
+    /*
+     * Never allow the active Super Admin to
+     * demote their own account through this action.
+     */
+    if (
+        $operation === 'demote' &&
+        $targetId === (int)$admin['id']
+    ) {
+        out(false, [
+            'error' =>
+                'You cannot demote your own active Super Administrator account.'
+        ], 422);
+    }
+
+
+    /*
+     * Re-load the acting account from the database.
+     * Do not trust only the session copy for a
+     * security-sensitive role change.
+     */
+    $actorStmt = $db->prepare(
+        'SELECT id,
+                full_name,
+                password_hash,
+                role,
+                status,
+                two_factor_enabled,
+                two_factor_secret,
+                two_factor_last_used_step
+           FROM users
+          WHERE id = ?
+          LIMIT 1'
+    );
+
+    $actorId =
+        (int)$admin['id'];
+
+    $actorStmt->bind_param(
+        'i',
+        $actorId
+    );
+
+    $actorStmt->execute();
+
+    $actor =
+        $actorStmt
+            ->get_result()
+            ->fetch_assoc();
+
+    $actorStmt->close();
+
+
+    if (
+        !$actor ||
+        $actor['role'] !== 'super_admin' ||
+        $actor['status'] !== 'active'
+    ) {
+        out(false, [
+            'error' =>
+                'Your Super Administrator account is no longer authorized.'
+        ], 403);
+    }
+
+
+    /*
+     * Factor 1: current password.
+     */
+    if (
+        !password_verify(
+            $password,
+            $actor['password_hash']
+        )
+    ) {
+        out(false, [
+            'error' =>
+                'Current password is incorrect.'
+        ], 401);
+    }
+
+
+    /*
+     * Factor 2: existing TOTP.
+     */
+    if (
+        (int)$actor['two_factor_enabled'] !== 1 ||
+        empty($actor['two_factor_secret'])
+    ) {
+        out(false, [
+            'error' =>
+                'Two-factor authentication is not configured for this Super Administrator.'
+        ], 409);
+    }
+
+
+    try {
+
+        $secret =
+            decrypt_2fa_secret(
+                (string)$actor['two_factor_secret']
+            );
+
+    } catch (Throwable $e) {
+
+        out(false, [
+            'error' =>
+                'The stored 2FA configuration could not be read.'
+        ], 500);
+    }
+
+
+    $lastUsedStep = null;
+
+    if (
+        $actor['two_factor_last_used_step'] !== null
+    ) {
+        $lastUsedStep =
+            (int)$actor['two_factor_last_used_step'];
+    }
+
+
+    $matchedStep =
+        totp_verify_code(
+            $secret,
+            $code,
+            1,
+            $lastUsedStep
+        );
+
+
+    if ($matchedStep === false) {
+
+        out(false, [
+            'error' =>
+                'Invalid, expired, or already-used authenticator code.'
+        ], 401);
+    }
+
+
+    /*
+     * Load and validate target.
+     */
+    $targetStmt = $db->prepare(
+        'SELECT id,
+                full_name,
+                role,
+                status,
+                barangay_id
+           FROM users
+          WHERE id = ?
+          LIMIT 1'
+    );
+
+    $targetStmt->bind_param(
+        'i',
+        $targetId
+    );
+
+    $targetStmt->execute();
+
+    $target =
+        $targetStmt
+            ->get_result()
+            ->fetch_assoc();
+
+    $targetStmt->close();
+
+
+    if (!$target) {
+        out(false, [
+            'error' => 'Target user not found.'
+        ], 404);
+    }
+
+
+    if ($operation === 'promote') {
+
+        /*
+         * We only promote an existing Barangay Admin.
+         */
+        if ($target['role'] !== 'admin') {
+            out(false, [
+                'error' =>
+                    'Only a Barangay Administrator can be promoted to Super Administrator.'
+            ], 422);
+        }
+
+    } else {
+
+        if ($target['role'] !== 'super_admin') {
+            out(false, [
+                'error' =>
+                    'The selected account is not a Super Administrator.'
+            ], 422);
+        }
+
+
+        /*
+         * A demoted Super Admin becomes a normal
+         * Barangay Admin, therefore a valid barangay
+         * must be assigned.
+         */
+        if ($barangayId <= 0) {
+            out(false, [
+                'error' =>
+                    'Select a barangay before demoting this Super Administrator.'
+            ], 422);
+        }
+
+
+        $brgyStmt = $db->prepare(
+            'SELECT id
+               FROM barangays
+              WHERE id = ?
+              LIMIT 1'
+        );
+
+        $brgyStmt->bind_param(
+            'i',
+            $barangayId
+        );
+
+        $brgyStmt->execute();
+
+        $barangayExists =
+            $brgyStmt
+                ->get_result()
+                ->fetch_assoc();
+
+        $brgyStmt->close();
+
+
+        if (!$barangayExists) {
+            out(false, [
+                'error' =>
+                    'Selected barangay does not exist.'
+            ], 422);
+        }
+    }
+
+
+    /*
+     * Consume the TOTP step and perform the role
+     * update in one transaction.
+     */
+    try {
+
+        $db->begin_transaction();
+
+
+        $step =
+            (int)$matchedStep;
+
+
+        $totpStmt = $db->prepare(
+            'UPDATE users
+                SET two_factor_last_used_step = ?
+              WHERE id = ?
+                AND two_factor_enabled = 1'
+        );
+
+        $totpStmt->bind_param(
+            'ii',
+            $step,
+            $actorId
+        );
+
+        $totpStmt->execute();
+
+        if (
+            $totpStmt->affected_rows !== 1
+        ) {
+            $totpStmt->close();
+
+            throw new RuntimeException(
+                'Could not consume the verification code.'
+            );
+        }
+
+        $totpStmt->close();
+
+
+        if ($operation === 'promote') {
+
+            /*
+             * Super Admin is global:
+             * barangay_id must be NULL.
+             */
+            $roleStmt = $db->prepare(
+                'UPDATE users
+                    SET role = "super_admin",
+                        barangay_id = NULL
+                  WHERE id = ?
+                    AND role = "admin"'
+            );
+
+            $roleStmt->bind_param(
+                'i',
+                $targetId
+            );
+
+        } else {
+
+            /*
+             * Demotion:
+             * Super Admin becomes Barangay Admin.
+             */
+            $roleStmt = $db->prepare(
+                'UPDATE users
+                    SET role = "admin",
+                        barangay_id = ?
+                  WHERE id = ?
+                    AND role = "super_admin"'
+            );
+
+            $roleStmt->bind_param(
+                'ii',
+                $barangayId,
+                $targetId
+            );
+        }
+
+
+        $roleStmt->execute();
+
+        if (
+            $roleStmt->affected_rows !== 1
+        ) {
+            $roleStmt->close();
+
+            throw new RuntimeException(
+                'The requested role change could not be completed.'
+            );
+        }
+
+        $roleStmt->close();
+
+
+        /*
+         * Audit the privileged action explicitly.
+         */
+        $ip =
+            $_SERVER['REMOTE_ADDR'] ?? null;
+
+        $actorName =
+            (string)$actor['full_name'];
+
+        $auditBarangay =
+            $operation === 'demote'
+                ? $barangayId
+                : null;
+
+        $auditAction =
+            $operation === 'promote'
+                ? 'super_admin_promoted'
+                : 'super_admin_demoted';
+
+        $detail =
+            $operation === 'promote'
+                ? (
+                    'Promoted user #' .
+                    $targetId .
+                    ' (' .
+                    $target['full_name'] .
+                    ') to Super Administrator'
+                  )
+                : (
+                    'Demoted user #' .
+                    $targetId .
+                    ' (' .
+                    $target['full_name'] .
+                    ') to Barangay Administrator'
+                  );
+
+
+        $auditStmt = $db->prepare(
+            'INSERT INTO activity_log
+                (
+                    user_id,
+                    user_name,
+                    barangay_id,
+                    action,
+                    detail,
+                    ip_address
+                )
+             VALUES (?, ?, ?, ?, ?, ?)'
+        );
+
+
+        $auditStmt->bind_param(
+            'isisss',
+            $actorId,
+            $actorName,
+            $auditBarangay,
+            $auditAction,
+            $detail,
+            $ip
+        );
+
+        $auditStmt->execute();
+        $auditStmt->close();
+
+
+        $db->commit();
+
+    } catch (Throwable $e) {
+
+        try {
+            $db->rollback();
+        } catch (Throwable $ignored) {}
+
+
+        out(false, [
+            'error' =>
+                'The privileged role change could not be completed.'
+        ], 500);
+    }
+
+
+    out(true, [
+        'message' =>
+            $operation === 'promote'
+                ? 'User promoted to Super Administrator.'
+                : 'Super Administrator demoted to Barangay Administrator.'
+    ]);
 
 /* ── ACTIVITY LOG — user actions only (login, user mgmt, profile) ── */
 case 'activity_log':
@@ -353,13 +849,19 @@ case 'activity_log':
 
     // User/account-related actions
     $userActions = [
-        'login',
-        'logout',
-        'profile_updated',
-        'user_created',
-        'user_updated',
-        'user_disabled',
-        'user_enabled'
+    'login',
+    'logout',
+    'profile_updated',
+    'user_created',
+    'user_updated',
+    'user_disabled',
+    'user_enabled',
+
+    /*
+     * Privileged Super Admin role changes.
+     */
+    'super_admin_promoted',
+    'super_admin_demoted'
     ];
 
     $placeholders = implode(
@@ -431,6 +933,175 @@ case 'activity_log':
     $stmt->close();
 
     out(true, ['log' => $log]);
+
+/* ── SUPER ADMIN — GLOBAL ACTIVITY LOG ── */
+case 'global_activity_log':
+
+    $admin = require_admin();
+
+    /*
+     * Dedicated system-wide audit log is
+     * available only to Super Admin.
+     */
+    if (!is_super_admin($admin)) {
+        out(false, [
+            'error' => 'Super Administrator access required.'
+        ], 403);
+    }
+
+    $limit =
+        min(
+            300,
+            max(
+                1,
+                (int)($_GET['limit'] ?? 200)
+            )
+        );
+
+    $selectedBarangay =
+        (int)($_GET['barangay_id'] ?? 0);
+
+
+    /*
+     * All Barangays:
+     * include barangay events + system-level NULL events.
+     */
+    if ($selectedBarangay <= 0) {
+
+        $stmt = $db->prepare(
+            "SELECT
+                al.id,
+                al.user_id,
+                al.user_name,
+                al.barangay_id,
+                al.action,
+                al.detail,
+                al.ip_address,
+                al.created_at,
+
+                u.role AS user_role,
+
+                b.name AS barangay_name
+
+             FROM activity_log al
+
+             LEFT JOIN users u
+               ON u.id = al.user_id
+
+             LEFT JOIN barangays b
+               ON b.id = al.barangay_id
+
+             ORDER BY al.created_at DESC,
+                      al.id DESC
+
+             LIMIT ?"
+        );
+
+        $stmt->bind_param(
+            'i',
+            $limit
+        );
+
+    } else {
+
+        /*
+         * Explicit barangay context.
+         */
+        $stmt = $db->prepare(
+            "SELECT
+                al.id,
+                al.user_id,
+                al.user_name,
+                al.barangay_id,
+                al.action,
+                al.detail,
+                al.ip_address,
+                al.created_at,
+
+                u.role AS user_role,
+
+                b.name AS barangay_name
+
+             FROM activity_log al
+
+             LEFT JOIN users u
+               ON u.id = al.user_id
+
+             LEFT JOIN barangays b
+               ON b.id = al.barangay_id
+
+             WHERE al.barangay_id = ?
+
+             ORDER BY al.created_at DESC,
+                      al.id DESC
+
+             LIMIT ?"
+        );
+
+        $stmt->bind_param(
+            'ii',
+            $selectedBarangay,
+            $limit
+        );
+    }
+
+
+    $stmt->execute();
+
+    $res =
+        $stmt->get_result();
+
+    $log = [];
+
+
+    while (
+        $row = $res->fetch_assoc()
+    ) {
+
+        $log[] = [
+            'id' =>
+                (int)$row['id'],
+
+            'user_id' =>
+                $row['user_id'] === null
+                    ? null
+                    : (int)$row['user_id'],
+
+            'user_name' =>
+                $row['user_name'] ?: 'System',
+
+            'user_role' =>
+                $row['user_role'] ?: '',
+
+            'barangay_id' =>
+                $row['barangay_id'] === null
+                    ? null
+                    : (int)$row['barangay_id'],
+
+            'barangay_name' =>
+                $row['barangay_name'] ?: 'System',
+
+            'action' =>
+                $row['action'] ?: '',
+
+            'detail' =>
+                $row['detail'] ?: '',
+
+            'ip_address' =>
+                $row['ip_address'] ?: '',
+
+            'created_at' =>
+                $row['created_at']
+        ];
+    }
+
+
+    $stmt->close();
+
+
+    out(true, [
+        'log' => $log
+    ]);
 
 /* ── STAFF STATS ── */
 case 'staff_stats':

@@ -542,36 +542,148 @@ function getReportType(title) {
   return 'volume';
 }
 
+function appendReportScope(url) {
+
+  const user =
+    window.CURRENT_USER || {};
+
+  /*
+   * Normal Barangay Admin:
+   * backend automatically enforces own barangay.
+   */
+  if (user.role !== 'super_admin') {
+    return url;
+  }
+
+
+  const barangayId =
+    typeof getSelectedSuperAdminBarangayId === 'function'
+      ? getSelectedSuperAdminBarangayId()
+      : 0;
+
+
+  /*
+   * One explicit barangay selected.
+   */
+  if (barangayId > 0) {
+
+    return url +
+      '&barangay_id=' +
+      encodeURIComponent(barangayId);
+  }
+
+
+  /*
+   * Super Admin global scope.
+   */
+  return url + '&scope=all';
+}
+
 /* ── Download PDF from PHP backend ── */
 function downloadReportPDF(title) {
-  const dateFrom = document.getElementById('report-date-from')?.value || '';
-  const dateTo   = document.getElementById('report-date-to')?.value   || '';
-  const type     = getReportType(title);
 
-  let url = 'api/generate_report.php?type=' + type;
-  if (dateFrom) url += '&date_from=' + encodeURIComponent(dateFrom);
-  if (dateTo)   url += '&date_to='   + encodeURIComponent(dateTo);
+  const dateFrom =
+    document.getElementById(
+      'report-date-from'
+    )?.value || '';
 
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.target   = '_blank';
+  const dateTo =
+    document.getElementById(
+      'report-date-to'
+    )?.value || '';
+
+  const type =
+    getReportType(title);
+
+
+  let url =
+    'api/generate_report.php?type=' +
+    type;
+
+
+  if (dateFrom) {
+    url +=
+      '&date_from=' +
+      encodeURIComponent(dateFrom);
+  }
+
+
+  if (dateTo) {
+    url +=
+      '&date_to=' +
+      encodeURIComponent(dateTo);
+  }
+
+
+  /*
+   * Add Super Admin report scope.
+   */
+  url =
+    appendReportScope(url);
+
+
+  const a =
+    document.createElement('a');
+
+  a.href = url;
+  a.target = '_blank';
   a.download = '';
+
   document.body.appendChild(a);
+
   a.click();
+
   document.body.removeChild(a);
 }
 
 /* ── Preview PDF in a new browser tab (View button) ── */
 function viewReport(title) {
-  const dateFrom = document.getElementById('report-date-from')?.value || '';
-  const dateTo   = document.getElementById('report-date-to')?.value   || '';
-  const type     = getReportType(title);
 
-  let url = 'api/generate_report.php?type=' + type + '&view=1';
-  if (dateFrom) url += '&date_from=' + encodeURIComponent(dateFrom);
-  if (dateTo)   url += '&date_to='   + encodeURIComponent(dateTo);
+  const dateFrom =
+    document.getElementById(
+      'report-date-from'
+    )?.value || '';
 
-  window.open(url, '_blank');
+  const dateTo =
+    document.getElementById(
+      'report-date-to'
+    )?.value || '';
+
+  const type =
+    getReportType(title);
+
+
+  let url =
+    'api/generate_report.php?type=' +
+    type +
+    '&view=1';
+
+
+  if (dateFrom) {
+    url +=
+      '&date_from=' +
+      encodeURIComponent(dateFrom);
+  }
+
+
+  if (dateTo) {
+    url +=
+      '&date_to=' +
+      encodeURIComponent(dateTo);
+  }
+
+
+  /*
+   * Add Super Admin report scope.
+   */
+  url =
+    appendReportScope(url);
+
+
+  window.open(
+    url,
+    '_blank'
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -596,10 +708,11 @@ function fmtLogin(val) {
 }
 function roleBadge(role) {
   const cls =
-    role === 'admin'    ? 'b-blue'  :
-    role === 'resident' ? 'b-green' :
-    role === 'staff'    ? 'b-amber' :
-                          'b-gray';
+    role === 'super_admin' ? 'b-blue'  :
+    role === 'admin'       ? 'b-blue'  :
+    role === 'resident'    ? 'b-green' :
+    role === 'staff'       ? 'b-amber' :
+                            'b-gray';
 
   const labels = {
     admin: 'Administrator',
@@ -639,39 +752,273 @@ function switchUsersTab(tab, el) {
 async function renderUsers() { loadUsers(); }   /* called by boot sequence */
 
 async function loadUsers() {
-  const tbody = document.getElementById('users-tbody');
+
+  const tbody =
+    document.getElementById('users-tbody');
+
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">Loading…</td></tr>';
-  const r = await profileCall('list_users', null, 'GET');
+
+
+  tbody.innerHTML =
+    '<tr>' +
+      '<td colspan="7" ' +
+      'style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">' +
+      'Loading…' +
+      '</td>' +
+    '</tr>';
+
+
+  const r =
+    await profileCall(
+      'list_users',
+      null,
+      'GET'
+    );
+
+
   if (!r.ok) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">' + (r.error || 'Could not load users.') + '</td></tr>';
+
+    tbody.innerHTML =
+      '<tr>' +
+        '<td colspan="7" ' +
+        'style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">' +
+        (r.error || 'Could not load users.') +
+        '</td>' +
+      '</tr>';
+
     return;
   }
-  if (!r.users.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">No users found.</td></tr>';
+
+
+  let users =
+    Array.isArray(r.users)
+      ? r.users
+      : [];
+
+
+  const currentUser =
+    window.CURRENT_USER || {};
+
+
+  /*
+   * Super Admin:
+   * apply the global barangay selector.
+   */
+  if (
+    currentUser.role === 'super_admin'
+  ) {
+
+    const selectedBarangayId =
+      typeof getSelectedSuperAdminBarangayId ===
+        'function'
+        ? getSelectedSuperAdminBarangayId()
+        : 0;
+
+
+    if (selectedBarangayId > 0) {
+
+      users =
+        users.filter(
+          u =>
+            Number(u.barangay_id) ===
+            selectedBarangayId
+        );
+    }
+  }
+
+
+  if (!users.length) {
+
+    tbody.innerHTML =
+      '<tr>' +
+        '<td colspan="7" ' +
+        'style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">' +
+        'No users found for the current barangay.' +
+        '</td>' +
+      '</tr>';
+
     return;
   }
-  const myId = (window.CURRENT_USER && window.CURRENT_USER.id) || 0;
-  tbody.innerHTML = r.users.map(u => {
-    const isMe = Number(u.id) === Number(myId);
-    return '<tr>' +
-      '<td style="font-weight:500">' + (u.full_name || '—') + (isMe ? ' <span style="font-size:10px;color:var(--text3)">(you)</span>' : '') + '</td>' +
-      '<td style="font-size:11px;color:var(--text3)">' + (u.email || '—') + '</td>' +
-      '<td>' + roleBadge(u.role) + '</td>' +
-      '<td>' + statusBadgeUser(u.status) + '</td>' +
-      '<td style="font-size:11px">' + fmtLogin(u.last_login) + '</td>' +
-      '<td style="text-align:right;white-space:nowrap">' +
-        (isMe ? '' :
-          u.status === 'pending' ?
-            '<button class="btn btn-primary btn-sm" onclick="approveUser(' + u.id + ')">Approve</button> ' +
-            '<button class="btn btn-ghost btn-sm" onclick="rejectUser(' + u.id + ')">Reject</button>'
-          :
-            '<button class="btn btn-ghost btn-sm" onclick="cycleUserRole(' + u.id + ',\'' + u.role + '\')">Role</button> ' +
-            '<button class="btn btn-ghost btn-sm" onclick="toggleUserStatus(' + u.id + ',\'' + u.status + '\')">' +
-              (u.status === 'active' ? 'Disable' : 'Enable') + '</button>'
-        ) +
-      '</td></tr>';
-  }).join('');
+
+
+  const myId =
+    currentUser.id || 0;
+
+
+  const barangays =
+    window.SUPER_ADMIN_BARANGAYS || [];
+
+
+  function barangayName(id) {
+
+    if (!id) {
+      return 'System';
+    }
+
+    const brgy =
+      barangays.find(
+        b =>
+          Number(b.id) ===
+          Number(id)
+      );
+
+    return brgy
+      ? brgy.name
+      : 'Barangay #' + id;
+  }
+
+
+  tbody.innerHTML =
+    users.map(function(u){
+
+      const isMe =
+        Number(u.id) ===
+        Number(myId);
+
+
+      const brgyCell =
+        currentUser.role === 'super_admin'
+          ? (
+              u.role === 'super_admin'
+                ? 'System'
+                : barangayName(
+                    u.barangay_id
+                  )
+            )
+          : barangayName(
+              u.barangay_id
+            );
+
+
+      return (
+        '<tr>' +
+
+          '<td style="font-weight:500">' +
+            _escHtml(
+              u.full_name || '—'
+            ) +
+            (
+              isMe
+                ? ' <span style="font-size:10px;color:var(--text3)">(you)</span>'
+                : ''
+            ) +
+          '</td>' +
+
+          '<td style="font-size:11px;color:var(--text3)">' +
+            _escHtml(
+              u.email || '—'
+            ) +
+          '</td>' +
+
+          '<td style="font-size:11px">' +
+            _escHtml(brgyCell) +
+          '</td>' +
+
+          '<td>' +
+            roleBadge(u.role) +
+          '</td>' +
+
+          '<td>' +
+            statusBadgeUser(u.status) +
+          '</td>' +
+
+          '<td style="font-size:11px">' +
+            fmtLogin(u.last_login) +
+          '</td>' +
+
+          '<td style="text-align:right;white-space:nowrap">' +
+
+            (
+              isMe
+
+                ? ''
+
+                : u.role === 'super_admin'
+
+                  ? (
+                      isMe
+
+                        ? '<span style="font-size:10px;color:var(--text3);">Protected</span>'
+
+                        : '<button class="btn btn-ghost btn-sm" ' +
+                          'onclick="openDemoteSuperAdmin(' +
+                            Number(u.id) +
+                            ',\'' +
+                            _escHtml(u.full_name || 'Super Administrator') +
+                          '\')">' +
+                            'Demote' +
+                          '</button>'
+                    )
+
+                  : u.status === 'pending'
+
+                    ? (
+                        '<button class="btn btn-primary btn-sm" ' +
+                        'onclick="approveUser(' +
+                          Number(u.id) +
+                        ')">' +
+                          'Approve' +
+                        '</button> ' +
+
+                        '<button class="btn btn-ghost btn-sm" ' +
+                        'onclick="rejectUser(' +
+                          Number(u.id) +
+                        ')">' +
+                          'Reject' +
+                        '</button>'
+                      )
+
+                    : (
+                        (
+                          u.role === 'admin' &&
+                          (window.CURRENT_USER || {}).role === 'super_admin'
+
+                            ? (
+                                '<button class="btn btn-ghost btn-sm" ' +
+                                'onclick="openPromoteSuperAdmin(' +
+                                  Number(u.id) +
+                                  ',\'' +
+                                  _escHtml(u.full_name || 'Administrator') +
+                                '\')">' +
+                                  'Promote to Super Admin' +
+                                '</button> '
+                              )
+
+                            : ''
+                        ) +
+
+                        '<button class="btn btn-ghost btn-sm" ' +
+                        'onclick="cycleUserRole(' +
+                          Number(u.id) +
+                          ',\'' +
+                          _escHtml(u.role) +
+                        '\')">' +
+                          'Role' +
+                        '</button> ' +
+
+                        '<button class="btn btn-ghost btn-sm" ' +
+                        'onclick="toggleUserStatus(' +
+                          Number(u.id) +
+                          ',\'' +
+                          _escHtml(u.status) +
+                        '\')">' +
+
+                          (
+                            u.status === 'active'
+                              ? 'Disable'
+                              : 'Enable'
+                          ) +
+
+                        '</button>'
+                      )
+            ) +
+
+          '</td>' +
+
+        '</tr>'
+      );
+
+    }).join('');
 }
 
 /* role cycles admin → staff → viewer → admin */
@@ -701,6 +1048,395 @@ async function cycleUserRole(id, current) {
 
   loadUsers();
 }
+
+let _secureRoleTarget = null;
+
+
+function openPromoteSuperAdmin(id, name) {
+
+  const user =
+    window.CURRENT_USER || {};
+
+  if (user.role !== 'super_admin') {
+    alert('Super Administrator access required.');
+    return;
+  }
+
+
+  _secureRoleTarget = {
+    id: Number(id),
+    name: name || 'this user',
+    operation: 'promote'
+  };
+
+
+  document.getElementById(
+    'sr-user-id'
+  ).value = String(id);
+
+  document.getElementById(
+    'sr-operation'
+  ).value = 'promote';
+
+
+  document.getElementById(
+    'sr-title'
+  ).textContent =
+    'Promote to Super Administrator';
+
+
+  document.getElementById(
+    'sr-warning'
+  ).innerHTML =
+    '⚠️ You are granting <strong>GLOBAL SYSTEM ACCESS</strong> to <strong>' +
+    _escHtml(name || 'this account') +
+    '</strong>. This account will no longer belong to one specific barangay.';
+
+
+  document.getElementById(
+    'sr-demote-barangay-wrap'
+  ).style.display = 'none';
+
+
+  resetSecureRoleFields();
+
+
+  showModal('secureRoleModal');
+}
+
+
+function openDemoteSuperAdmin(id, name) {
+
+  const user =
+    window.CURRENT_USER || {};
+
+  if (user.role !== 'super_admin') {
+    alert('Super Administrator access required.');
+    return;
+  }
+
+
+  if (
+    Number(id) ===
+    Number(user.id)
+  ) {
+    alert(
+      'You cannot demote your own active Super Administrator account.'
+    );
+
+    return;
+  }
+
+
+  _secureRoleTarget = {
+    id: Number(id),
+    name: name || 'this user',
+    operation: 'demote'
+  };
+
+
+  document.getElementById(
+    'sr-user-id'
+  ).value = String(id);
+
+  document.getElementById(
+    'sr-operation'
+  ).value = 'demote';
+
+
+  document.getElementById(
+    'sr-title'
+  ).textContent =
+    'Demote Super Administrator';
+
+
+  document.getElementById(
+    'sr-warning'
+  ).innerHTML =
+    '⚠️ <strong>' +
+    _escHtml(name || 'This account') +
+    '</strong> will lose global access and become a normal Barangay Administrator.';
+
+
+  const wrap =
+    document.getElementById(
+      'sr-demote-barangay-wrap'
+    );
+
+  wrap.style.display = '';
+
+
+  const select =
+    document.getElementById(
+      'sr-barangay'
+    );
+
+  select.innerHTML =
+    '<option value="">-- Select Barangay --</option>';
+
+
+  const barangays =
+    window.SUPER_ADMIN_BARANGAYS || [];
+
+
+  barangays.forEach(function(brgy) {
+
+    const option =
+      document.createElement('option');
+
+    option.value =
+      String(brgy.id);
+
+    option.textContent =
+      brgy.name;
+
+    select.appendChild(option);
+  });
+
+
+  resetSecureRoleFields();
+
+
+  showModal('secureRoleModal');
+}
+
+
+function resetSecureRoleFields() {
+
+  const password =
+    document.getElementById(
+      'sr-password'
+    );
+
+  const totp =
+    document.getElementById(
+      'sr-totp'
+    );
+
+  const msg =
+    document.getElementById(
+      'sr-msg'
+    );
+
+
+  if (password) {
+    password.value = '';
+  }
+
+  if (totp) {
+    totp.value = '';
+  }
+
+  if (msg) {
+    msg.textContent = '';
+  }
+}
+
+
+function closeSecureRoleModal() {
+
+  closeModal('secureRoleModal');
+
+  resetSecureRoleFields();
+
+  _secureRoleTarget = null;
+}
+
+
+async function submitSecureRoleChange() {
+
+  if (!_secureRoleTarget) {
+    return;
+  }
+
+
+  const operation =
+    _secureRoleTarget.operation;
+
+
+  const password =
+    document.getElementById(
+      'sr-password'
+    ).value;
+
+
+  const totp =
+    document.getElementById(
+      'sr-totp'
+    ).value
+      .replace(/\D/g, '')
+      .trim();
+
+
+  const barangayId =
+    Number(
+      document.getElementById(
+        'sr-barangay'
+      ).value || 0
+    );
+
+
+  const msg =
+    document.getElementById(
+      'sr-msg'
+    );
+
+
+  if (!password) {
+
+    msg.style.color =
+      'var(--red)';
+
+    msg.textContent =
+      'Enter your current password.';
+
+    return;
+  }
+
+
+  if (totp.length !== 6) {
+
+    msg.style.color =
+      'var(--red)';
+
+    msg.textContent =
+      'Enter the 6-digit authenticator code.';
+
+    return;
+  }
+
+
+  if (
+    operation === 'demote' &&
+    barangayId <= 0
+  ) {
+
+    msg.style.color =
+      'var(--red)';
+
+    msg.textContent =
+      'Select a barangay for the demoted administrator.';
+
+    return;
+  }
+
+
+  const warning =
+    operation === 'promote'
+      ? (
+          'You are granting GLOBAL SYSTEM ACCESS to ' +
+          _secureRoleTarget.name +
+          '. Continue?'
+        )
+      : (
+          'You are removing Super Administrator access from ' +
+          _secureRoleTarget.name +
+          '. Continue?'
+        );
+
+
+  if (!confirm(warning)) {
+    return;
+  }
+
+
+  const btn =
+    document.getElementById(
+      'sr-submit-btn'
+    );
+
+
+  btn.disabled = true;
+
+  btn.textContent =
+    'Verifying…';
+
+
+  try {
+
+    const body = {
+
+      id:
+        _secureRoleTarget.id,
+
+      operation:
+        operation,
+
+      current_password:
+        password,
+
+      totp_code:
+        totp
+    };
+
+
+    if (operation === 'demote') {
+      body.barangay_id =
+        barangayId;
+    }
+
+
+    const r =
+      await profileCall(
+        'secure_super_admin_role',
+        body
+      );
+
+
+    if (!r.ok) {
+
+      msg.style.color =
+        'var(--red)';
+
+      msg.textContent =
+        r.error ||
+        'Role change failed.';
+
+      return;
+    }
+
+
+    msg.style.color =
+      'var(--green)';
+
+    msg.textContent =
+      r.message ||
+      'Role changed successfully.';
+
+
+    await loadUsers();
+
+
+    setTimeout(
+      closeSecureRoleModal,
+      800
+    );
+
+
+  } catch (err) {
+
+    console.error(
+      'Secure role change failed:',
+      err
+    );
+
+
+    msg.style.color =
+      'var(--red)';
+
+    msg.textContent =
+      'Network error. Please try again.';
+
+
+  } finally {
+
+    btn.disabled = false;
+
+    btn.textContent =
+      'Confirm Role Change';
+  }
+}
+
 async function toggleUserStatus(id, current) {
   const next = current === 'active' ? 'disabled' : 'active';
   const r = await profileCall('update_user', { id, status: next });
@@ -722,7 +1458,51 @@ async function rejectUser(id) {
 }
 
 /* ── Add user (uses the modal in index.html) ── */
-function openAddUser()  { const m = document.getElementById('addUserModal'); if (m) m.classList.add('open'); }
+function openAddUser() {
+
+  const user =
+    window.CURRENT_USER || {};
+
+
+  if (
+    user.role === 'super_admin'
+  ) {
+
+    const barangayId =
+      typeof getSelectedSuperAdminBarangayId ===
+        'function'
+        ? getSelectedSuperAdminBarangayId()
+        : 0;
+
+
+    if (barangayId <= 0) {
+
+      alert(
+        'Select a barangay from the All Barangays selector before creating a user.'
+      );
+
+      return;
+    }
+  }
+
+
+  const msg =
+    document.getElementById('au_msg');
+
+  if (msg) {
+    msg.textContent = '';
+  }
+
+
+  const m =
+    document.getElementById(
+      'addUserModal'
+    );
+
+  if (m) {
+    m.classList.add('open');
+  }
+}
 function closeAddUser() { const m = document.getElementById('addUserModal'); if (m) m.classList.remove('open'); }
 async function submitAddUser() {
   const pw = document.getElementById('au_pw').value;
@@ -737,6 +1517,37 @@ async function submitAddUser() {
     role:      document.getElementById('au_role').value,
     password:  pw,
   };
+    /*
+  * Super Admin must explicitly assign the
+  * new account to the selected barangay.
+  */
+  if (
+    (window.CURRENT_USER || {}).role ===
+    'super_admin'
+  ) {
+
+    const barangayId =
+      typeof getSelectedSuperAdminBarangayId ===
+        'function'
+        ? getSelectedSuperAdminBarangayId()
+        : 0;
+
+
+    if (barangayId <= 0) {
+
+      msg.style.color =
+        'var(--red)';
+
+      msg.textContent =
+        'Select a barangay before creating a user.';
+
+      return;
+    }
+
+
+    body.barangay_id =
+      barangayId;
+  }
   const r = await profileCall('create_user', body);
   if (!r.ok) { msg.style.color = 'var(--red)'; msg.textContent = r.error || 'Could not create user.'; return; }
   closeAddUser();
@@ -780,6 +1591,457 @@ async function loadStaffStats() {
       '<td style="font-size:11px;color:var(--text2)">' + (s.cats || '<span style="color:var(--text3)">No cases processed yet</span>') + '</td>' +
       '</tr>';
   }).join('');
+}
+
+/*
+ * ════════════════════════════════════════════════════
+ * SUPER ADMIN — GLOBAL ACTIVITY LOG
+ * ════════════════════════════════════════════════════
+ */
+
+let _globalActivityLogs = [];
+
+
+async function loadGlobalActivityLogs() {
+
+  const user =
+    window.CURRENT_USER || {};
+
+
+  if (user.role !== 'super_admin') {
+    return;
+  }
+
+
+  const tbody =
+    document.getElementById(
+      'sa-global-log-tbody'
+    );
+
+
+  if (!tbody) {
+    return;
+  }
+
+
+  tbody.innerHTML =
+    '<tr>' +
+      '<td colspan="7" ' +
+      'style="text-align:center;padding:30px;color:var(--text3);">' +
+        'Loading activity…' +
+      '</td>' +
+    '</tr>';
+
+
+  try {
+
+    const barangayId =
+      typeof getSelectedSuperAdminBarangayId ===
+        'function'
+        ? getSelectedSuperAdminBarangayId()
+        : 0;
+
+
+    let url =
+      'api/profile.php?action=global_activity_log&limit=200';
+
+
+    if (barangayId > 0) {
+
+      url +=
+        '&barangay_id=' +
+        encodeURIComponent(
+          barangayId
+        );
+    }
+
+
+    const res =
+      await fetch(
+        url,
+        {
+          credentials:'include',
+          cache:'no-store'
+        }
+      );
+
+
+    const data =
+      await res.json();
+
+
+    if (
+      !res.ok ||
+      !data.ok
+    ) {
+
+      throw new Error(
+        data.error ||
+        'Could not load activity logs.'
+      );
+    }
+
+
+    _globalActivityLogs =
+      Array.isArray(data.log)
+        ? data.log
+        : [];
+
+
+    populateGlobalActivityActionFilter();
+
+    renderGlobalActivityLogs();
+
+
+  } catch (err) {
+
+    console.error(
+      'Global activity log load failed:',
+      err
+    );
+
+
+    tbody.innerHTML =
+      '<tr>' +
+        '<td colspan="7" ' +
+        'style="text-align:center;padding:30px;color:var(--red,#dc2626);">' +
+          _escHtml(
+            err.message ||
+            'Could not load activity logs.'
+          ) +
+        '</td>' +
+      '</tr>';
+  }
+}
+
+
+function populateGlobalActivityActionFilter() {
+
+  const select =
+    document.getElementById(
+      'sa-log-action-filter'
+    );
+
+
+  if (!select) {
+    return;
+  }
+
+
+  const previous =
+    select.value;
+
+
+  const actions =
+    [
+      ...new Set(
+        _globalActivityLogs
+          .map(r => r.action)
+          .filter(Boolean)
+      )
+    ].sort();
+
+
+  select.innerHTML =
+    '<option value="">All Actions</option>';
+
+
+  actions.forEach(function(action) {
+
+    const option =
+      document.createElement('option');
+
+    option.value =
+      action;
+
+    option.textContent =
+      formatActivityAction(action);
+
+    select.appendChild(option);
+  });
+
+
+  if (
+    previous &&
+    actions.includes(previous)
+  ) {
+    select.value =
+      previous;
+  }
+}
+
+
+function renderGlobalActivityLogs() {
+
+  const tbody =
+    document.getElementById(
+      'sa-global-log-tbody'
+    );
+
+
+  if (!tbody) {
+    return;
+  }
+
+
+  const search =
+    (
+      document.getElementById(
+        'sa-log-search'
+      )?.value || ''
+    )
+      .trim()
+      .toLowerCase();
+
+
+  const role =
+    document.getElementById(
+      'sa-log-role-filter'
+    )?.value || '';
+
+
+  const action =
+    document.getElementById(
+      'sa-log-action-filter'
+    )?.value || '';
+
+
+  let rows =
+    [..._globalActivityLogs];
+
+
+  if (role) {
+
+    rows =
+      rows.filter(
+        r =>
+          String(r.user_role || '') ===
+          role
+      );
+  }
+
+
+  if (action) {
+
+    rows =
+      rows.filter(
+        r =>
+          String(r.action || '') ===
+          action
+      );
+  }
+
+
+  if (search) {
+
+    rows =
+      rows.filter(function(r){
+
+        const haystack =
+          [
+            r.user_name,
+            r.user_role,
+            r.barangay_name,
+            r.action,
+            r.detail,
+            r.ip_address
+          ]
+            .join(' ')
+            .toLowerCase();
+
+
+        return haystack.includes(
+          search
+        );
+      });
+  }
+
+
+  const count =
+    document.getElementById(
+      'sa-log-count'
+    );
+
+
+  if (count) {
+
+    count.textContent =
+      rows.length +
+      ' record' +
+      (
+        rows.length === 1
+          ? ''
+          : 's'
+      ) +
+      ' shown';
+  }
+
+
+  if (!rows.length) {
+
+    tbody.innerHTML =
+      '<tr>' +
+        '<td colspan="7" ' +
+        'style="text-align:center;padding:32px;color:var(--text3);">' +
+          'No activity found for the current filters.' +
+        '</td>' +
+      '</tr>';
+
+    return;
+  }
+
+
+  tbody.innerHTML =
+    rows.map(function(r){
+
+      const roleLabel =
+        formatActivityRole(
+          r.user_role
+        );
+
+
+      const barangay =
+        r.barangay_id
+          ? (
+              r.barangay_name ||
+              'Barangay #' +
+              r.barangay_id
+            )
+          : 'System';
+
+
+      return (
+        '<tr>' +
+
+          '<td style="font-size:11px;color:var(--text3);white-space:nowrap;">' +
+            _escHtml(
+              formatActivityTimestamp(
+                r.created_at
+              )
+            ) +
+          '</td>' +
+
+          '<td style="font-weight:500;white-space:nowrap;">' +
+            _escHtml(
+              r.user_name ||
+              'System'
+            ) +
+          '</td>' +
+
+          '<td>' +
+            '<span class="badge b-gray">' +
+              _escHtml(roleLabel) +
+            '</span>' +
+          '</td>' +
+
+          '<td style="font-size:11px;">' +
+            _escHtml(barangay) +
+          '</td>' +
+
+          '<td>' +
+            '<span class="badge b-blue" style="font-size:9px;">' +
+              _escHtml(
+                formatActivityAction(
+                  r.action
+                )
+              ) +
+            '</span>' +
+          '</td>' +
+
+          '<td style="font-size:11px;min-width:260px;">' +
+            _escHtml(
+              r.detail || '—'
+            ) +
+          '</td>' +
+
+          '<td style="font-family:var(--mono);font-size:10px;white-space:nowrap;">' +
+            _escHtml(
+              r.ip_address || '—'
+            ) +
+          '</td>' +
+
+        '</tr>'
+      );
+
+    }).join('');
+}
+
+
+function formatActivityAction(action) {
+
+  return String(
+    action || 'unknown'
+  )
+    .replace(/_/g, ' ')
+    .replace(
+      /\b\w/g,
+      function(c){
+        return c.toUpperCase();
+      }
+    );
+}
+
+
+function formatActivityRole(role) {
+
+  const labels = {
+    super_admin:
+      'Super Admin',
+
+    admin:
+      'Administrator',
+
+    staff:
+      'Staff',
+
+    viewer:
+      'Viewer',
+
+    resident:
+      'Resident'
+  };
+
+
+  return labels[role] ||
+    (
+      role
+        ? role
+        : 'System'
+    );
+}
+
+
+function formatActivityTimestamp(raw) {
+
+  if (!raw) {
+    return '—';
+  }
+
+
+  try {
+
+    const d =
+      new Date(
+        String(raw)
+          .replace(' ', 'T')
+      );
+
+
+    return d.toLocaleString(
+      'en-PH',
+      {
+        month:'short',
+        day:'numeric',
+        year:'numeric',
+        hour:'2-digit',
+        minute:'2-digit'
+      }
+    );
+
+  } catch(e) {
+
+    return raw;
+  }
 }
 
 /* ── MY ACCOUNT (profile icon in the topbar) ── */

@@ -6,6 +6,14 @@ const API_URL = 'api.php';
 
 let complaints = [];
 let _officers  = [];
+
+/*
+ * Super Admin keeps an untouched global copy.
+ * The visible arrays below are filtered by the
+ * All Barangays context selector.
+ */
+let _allComplaints = [];
+let _allOfficers   = [];
 let _editingOfficerId = null;
 let _assignComplaintId = null;
 let _currentDetailComplaintId = null;
@@ -19,27 +27,278 @@ function mask(text) {
   return s.trim() ? '••••••' : s;
 }
 
-async function loadFromDB() {
-  try {
-    const res  = await fetch(API_URL + '?type=init');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    complaints = data.complaints  || [];
-    _officers  = data.officers    || [];
-    notifStore = (data.notifications || []).map(n => ({
-      msg:    n.msg,
-      type:   n.type,
-      time:   n.time,
-      unread: n.isRead ? false : true,
-    }));
-    nextId = parseInt(data.nextId) || 1;
-  } catch (err) {
-    console.warn('BICTS: Could not reach api.php, running in-memory.', err);
-    complaints = [];
-    notifStore = [];
-    nextId     = 1;
+function getSelectedSuperAdminBarangayId() {
+
+  const user =
+    window.CURRENT_USER || {};
+
+  if (user.role !== 'super_admin') {
+    return 0;
   }
+
+  const select =
+    document.getElementById(
+      'global-barangay-select'
+    );
+
+  return Number(
+    select?.value || 0
+  );
+}
+
+
+function applySuperAdminContext() {
+
+    /*
+  * Refresh Reports & Analytics when
+  * the Super Admin context changes.
+  */
+  const reportsScreen =
+    document.getElementById(
+      'screen-reports'
+    );
+
+  if (
+    reportsScreen &&
+    reportsScreen.classList.contains('active')
+  ) {
+
+    if (
+      typeof renderReports === 'function'
+    ) {
+      renderReports();
+    }
+
+    if (
+      typeof renderWeeklyBars === 'function'
+    ) {
+      renderWeeklyBars();
+    }
+  }
+
+  const user =
+    window.CURRENT_USER || {};
+
+  /*
+   * Normal Barangay Admin:
+   * preserve the exact existing behavior.
+   */
+  if (user.role !== 'super_admin') {
+
+    complaints =
+      [..._allComplaints];
+
+    _officers =
+      [..._allOfficers];
+
+    renderAll();
+    renderOfficersTable();
+    renderOfficerStats();
+
+    return;
+  }
+
+
+  const barangayId =
+    getSelectedSuperAdminBarangayId();
+
+
+  /*
+   * All Barangays.
+   */
+  if (barangayId <= 0) {
+
+    complaints =
+      [..._allComplaints];
+
+    _officers =
+      [..._allOfficers];
+
+  /*
+   * One selected barangay.
+   */
+  } else {
+
+    complaints =
+      _allComplaints.filter(
+        c =>
+          Number(c.barangay_id) ===
+          barangayId
+      );
+
+    _officers =
+      _allOfficers.filter(
+        o =>
+          Number(o.barangay_id) ===
+          barangayId
+      );
+  }
+
+
   renderAll();
+
+  renderOfficersTable();
+
+  renderOfficerStats();
+
+    /*
+  * Refresh Users & Roles too when that
+  * screen is currently visible.
+  */
+  const usersScreen =
+    document.getElementById(
+      'screen-users'
+    );
+
+  if (
+    usersScreen &&
+    usersScreen.classList.contains('active') &&
+    typeof loadUsers === 'function'
+  ) {
+    loadUsers();
+  }
+
+    /*
+  * Refresh dedicated Activity Logs when
+  * the Super Admin barangay context changes.
+  */
+  const activityLogsScreen =
+    document.getElementById(
+      'screen-activity-logs'
+    );
+
+
+  if (
+    activityLogsScreen &&
+    activityLogsScreen.classList.contains('active') &&
+    typeof loadGlobalActivityLogs === 'function'
+  ) {
+
+    loadGlobalActivityLogs();
+  }
+
+  /*
+   * If Settings is currently open,
+   * load the selected barangay's configuration.
+   */
+  const settingsScreen =
+  document.getElementById(
+    'screen-settings'
+  );
+
+
+if (
+  settingsScreen &&
+  settingsScreen.classList.contains('active')
+) {
+
+  /*
+   * Always call this, including All Barangays,
+   * so stale General values are cleared.
+   */
+  loadSettingsGeneral();
+
+
+  /*
+   * If the Audit tab is currently visible,
+   * refresh its scope too.
+   */
+  const auditPanel =
+    document.getElementById(
+      'settings-panel-audit'
+    );
+
+
+  if (
+    auditPanel &&
+    auditPanel.style.display !== 'none'
+  ) {
+
+    loadSettingsAuditLog();
+  }
+  }
+}
+
+async function loadFromDB() {
+
+  try {
+
+    const res =
+      await fetch(
+        API_URL + '?type=init',
+        {
+          credentials:'include',
+          cache:'no-store'
+        }
+      );
+
+    if (!res.ok) {
+      throw new Error(
+        'HTTP ' + res.status
+      );
+    }
+
+    const data =
+      await res.json();
+
+
+    _allComplaints =
+      Array.isArray(data.complaints)
+        ? data.complaints
+        : [];
+
+    _allOfficers =
+      Array.isArray(data.officers)
+        ? data.officers
+        : [];
+
+
+    /*
+     * Start with the complete authorized dataset.
+     * applySuperAdminContext() will narrow it
+     * when the Super Admin selects one barangay.
+     */
+    complaints =
+      [..._allComplaints];
+
+    _officers =
+      [..._allOfficers];
+
+
+    notifStore =
+      (data.notifications || []).map(
+        n => ({
+          msg:    n.msg,
+          type:   n.type,
+          time:   n.time,
+          unread: n.isRead ? false : true,
+        })
+      );
+
+
+    nextId =
+      parseInt(data.nextId) || 1;
+
+  } catch (err) {
+
+    console.warn(
+      'BICTS: Could not reach api.php, running in-memory.',
+      err
+    );
+
+    complaints = [];
+    _officers  = [];
+
+    _allComplaints = [];
+    _allOfficers   = [];
+
+    notifStore = [];
+    nextId = 1;
+  }
+
+
+  applySuperAdminContext();
+
   renderNotifs();
 }
 
@@ -144,19 +403,92 @@ async function advanceStatus(id) {
   } catch (err) { console.warn('BICTS: DB status sync failed.', err); }
 }
 
-async function pushNotif(msg, type) {
-  const time = new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-  notifStore.unshift({ msg, type, time, unread: true });
+async function pushNotif(msg, type, barangayId = 0) {
+
+  const time =
+    new Date().toLocaleTimeString(
+      'en-PH',
+      {
+        hour: '2-digit',
+        minute: '2-digit'
+      }
+    );
+
+  notifStore.unshift({
+    msg,
+    type,
+    time,
+    unread: true
+  });
+
   renderNotifs();
-  const bell = document.querySelector('.topbar-action');
-  if (bell) { bell.style.background = 'var(--sky-light)'; setTimeout(() => { bell.style.background = ''; }, 1200); }
+
+  const bell =
+    document.querySelector('.topbar-action');
+
+  if (bell) {
+    bell.style.background = 'var(--sky-light)';
+
+    setTimeout(() => {
+      bell.style.background = '';
+    }, 1200);
+  }
+
   try {
-    await fetch(API_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ action: 'add_notification', msg, notif_type: type, time }),
-    });
-  } catch (err) { console.warn('BICTS: Notification DB save failed.', err); }
+
+    const payload = {
+      action: 'add_notification',
+      msg,
+      notif_type: type,
+      time
+    };
+
+    /*
+     * Super Admin notifications must belong
+     * to an explicit barangay.
+     */
+    if (
+      (window.CURRENT_USER || {}).role ===
+        'super_admin' &&
+      Number(barangayId) > 0
+    ) {
+      payload.barangay_id =
+        Number(barangayId);
+    }
+
+    const res =
+      await fetch(
+        API_URL,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json'
+          },
+          body:
+            JSON.stringify(payload)
+        }
+      );
+
+    if (!res.ok) {
+
+      const data =
+        await res.json()
+          .catch(() => ({}));
+
+      throw new Error(
+        data.error ||
+        'Notification save failed'
+      );
+    }
+
+  } catch (err) {
+
+    console.warn(
+      'BICTS: Notification DB save failed.',
+      err
+    );
+  }
 }
 
 function renderAll() {
@@ -183,6 +515,8 @@ const SCREEN_TITLES = {
   users:              'User Management',
   notifs:             'Notifications',
   officers:           'Officer Management',
+
+  'activity-logs': 'Activity Logs',
 };
 
 function showScreen(id, navEl) {
@@ -196,6 +530,13 @@ function showScreen(id, navEl) {
   }
   if (id === 'users'    && typeof loadUsers === 'function')    loadUsers();
   if (id === 'officers' && typeof loadOfficers === 'function') loadOfficers();
+
+  if (
+    id === 'settings' &&
+    typeof loadSettingsGeneral === 'function'
+  ) {
+    loadSettingsGeneral();
+  }
 }
 
 function doLogout() {
@@ -620,90 +961,402 @@ function filterComplaints() { renderComplaints(); }
 ══════════════════════════════════════════════════════ */
 async function loadSettingsGeneral() {
 
-  const user = window.CURRENT_USER || null;
+  const user =
+    window.CURRENT_USER || null;
 
-  // Super Admin settings are barangay-specific.
-  // Do not request them while the global context is selected.
-  if (user && user.role === 'super_admin') {
+  const set =
+    (id, val) => {
+      const el =
+        document.getElementById(id);
 
-    const selector =
-      document.getElementById('global-barangay-select');
+      if (el) {
+        el.value = val || '';
+      }
+    };
+
+  const tog =
+    (id, val) => {
+      const el =
+        document.getElementById(id);
+
+      if (!el) return;
+
+      el.classList.toggle('on', !!val);
+      el.classList.toggle('off', !val);
+    };
+
+
+  /*
+   * SUPER ADMIN — ALL BARANGAYS
+   */
+  if (
+    user &&
+    user.role === 'super_admin'
+  ) {
 
     const barangayId =
-      selector ? Number(selector.value || 0) : 0;
+      typeof getSelectedSuperAdminBarangayId === 'function'
+        ? getSelectedSuperAdminBarangayId()
+        : 0;
+
 
     if (barangayId <= 0) {
+
+      set('cfg-barangay-name', '');
+      set('cfg-municipality', '');
+      set('cfg-admin-email', '');
+
+      tog('tog-auto-classify', false);
+      tog('tog-allow-anonymous', false);
+
+      const saveBtn =
+        document.getElementById(
+          'settings-save-btn'
+        );
+
+      if (saveBtn) {
+        saveBtn.disabled = true;
+      }
+
+      const msg =
+        document.getElementById(
+          'settings-msg'
+        );
+
+      if (msg) {
+        msg.style.color =
+          'var(--text3)';
+
+        msg.textContent =
+          'Select a barangay from the top selector to view or edit its settings.';
+      }
+
       return;
     }
   }
 
+
   try {
 
-    let url = 'api/settings.php?action=get';
+    let url =
+      'api/settings.php?action=get';
 
-    if (user && user.role === 'super_admin') {
-      const selector =
-        document.getElementById('global-barangay-select');
+
+    if (
+      user &&
+      user.role === 'super_admin'
+    ) {
 
       const barangayId =
-        Number(selector?.value || 0);
+        getSelectedSuperAdminBarangayId();
 
-      url += '&barangay_id=' +
+      url +=
+        '&barangay_id=' +
         encodeURIComponent(barangayId);
     }
 
-    const res = await fetch(
-      url,
-      { credentials:'include' }
+
+    const res =
+      await fetch(
+        url,
+        {
+          credentials:'include',
+          cache:'no-store'
+        }
+      );
+
+
+    const data =
+      await res.json();
+
+
+    if (!res.ok || !data.ok) {
+      throw new Error(
+        data.error ||
+        'Could not load settings.'
+      );
+    }
+
+
+    const s =
+      data.settings;
+
+
+    _runtimeSettings.auto_classify =
+      !!Number(s.auto_classify);
+
+    _runtimeSettings.allow_anonymous =
+      !!Number(s.allow_anonymous);
+
+
+    set(
+      'cfg-barangay-name',
+      s.barangay_name
     );
-    const data = await res.json();
-    if (!data.ok) return;
-    const s   = data.settings;
-    _runtimeSettings.auto_classify   = !!Number(s.auto_classify);
-    _runtimeSettings.allow_anonymous = !!Number(s.allow_anonymous);
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
-    set('cfg-barangay-name', s.barangay_name);
-    set('cfg-municipality',  s.municipality);
-    set('cfg-admin-email',   s.admin_email);
-    const tog = (id, val) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.toggle('on',  !!val);
-      el.classList.toggle('off', !val);
-    };
-    tog('tog-auto-classify',    s.auto_classify);
-    tog('tog-allow-anonymous',  s.allow_anonymous);
-  } catch(e) { console.warn('Could not load settings', e); }
+
+    set(
+      'cfg-municipality',
+      s.municipality
+    );
+
+    set(
+      'cfg-admin-email',
+      s.admin_email
+    );
+
+
+    tog(
+      'tog-auto-classify',
+      Number(s.auto_classify) === 1
+    );
+
+    tog(
+      'tog-allow-anonymous',
+      Number(s.allow_anonymous) === 1
+    );
+
+
+    const saveBtn =
+      document.getElementById(
+        'settings-save-btn'
+      );
+
+    if (saveBtn) {
+      saveBtn.disabled = false;
+    }
+
+
+    const msg =
+      document.getElementById(
+        'settings-msg'
+      );
+
+    if (msg) {
+      msg.textContent = '';
+    }
+
+
+  } catch(e) {
+
+    console.warn(
+      'Could not load settings',
+      e
+    );
+
+    const msg =
+      document.getElementById(
+        'settings-msg'
+      );
+
+    if (msg) {
+      msg.style.color =
+        'var(--red)';
+
+      msg.textContent =
+        e.message ||
+        'Could not load settings.';
+    }
+  }
 }
 
 async function saveSettings() {
-  const get = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
-  const tog = id => { const el = document.getElementById(id); return el ? el.classList.contains('on') : false; };
-  const msg = document.getElementById('settings-msg');
-  const btn = document.getElementById('settings-save-btn');
-  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
-  try {
-    const res  = await fetch('api/settings.php?action=save', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        barangay_name:    get('cfg-barangay-name'),
-        municipality:     get('cfg-municipality'),
-        admin_email:      get('cfg-admin-email'),
-        auto_classify:    tog('tog-auto-classify'),
-        allow_anonymous:  tog('tog-allow-anonymous'),
-      }),
-    });
-    const data = await res.json();
-    if (msg) {
-      msg.textContent = data.ok ? '✓ Settings saved successfully.' : (data.error || 'Failed to save.');
-      msg.style.color = data.ok ? 'var(--green)' : 'var(--red)';
-      setTimeout(() => { msg.textContent = ''; }, 3000);
+
+  const get =
+    id => {
+
+      const el =
+        document.getElementById(id);
+
+      return el
+        ? el.value.trim()
+        : '';
+    };
+
+
+  const tog =
+    id => {
+
+      const el =
+        document.getElementById(id);
+
+      return el
+        ? el.classList.contains('on')
+        : false;
+    };
+
+
+  const user =
+    window.CURRENT_USER || {};
+
+
+  const msg =
+    document.getElementById(
+      'settings-msg'
+    );
+
+
+  const btn =
+    document.getElementById(
+      'settings-save-btn'
+    );
+
+
+  /*
+   * Super Admin cannot save ambiguous
+   * All Barangays settings.
+   */
+  let targetBarangayId = 0;
+
+
+  if (
+    user.role === 'super_admin'
+  ) {
+
+    targetBarangayId =
+      typeof getSelectedSuperAdminBarangayId ===
+        'function'
+        ? getSelectedSuperAdminBarangayId()
+        : 0;
+
+
+    if (targetBarangayId <= 0) {
+
+      if (msg) {
+
+        msg.style.color =
+          'var(--red)';
+
+        msg.textContent =
+          'Select a barangay before saving settings.';
+      }
+
+      return;
     }
+  }
+
+
+  if (btn) {
+
+    btn.textContent =
+      'Saving…';
+
+    btn.disabled = true;
+  }
+
+
+  try {
+
+    const body = {
+
+      barangay_name:
+        get('cfg-barangay-name'),
+
+      municipality:
+        get('cfg-municipality'),
+
+      admin_email:
+        get('cfg-admin-email'),
+
+      auto_classify:
+        tog('tog-auto-classify'),
+
+      allow_anonymous:
+        tog('tog-allow-anonymous')
+    };
+
+
+    if (
+      user.role === 'super_admin'
+    ) {
+
+      body.barangay_id =
+        targetBarangayId;
+    }
+
+
+    const res =
+      await fetch(
+        'api/settings.php?action=save',
+        {
+          method:'POST',
+
+          credentials:'include',
+
+          headers:{
+            'Content-Type':
+              'application/json'
+          },
+
+          body:
+            JSON.stringify(body)
+        }
+      );
+
+
+    const data =
+      await res.json();
+
+
+    if (!res.ok || !data.ok) {
+
+      throw new Error(
+        data.error ||
+        'Failed to save settings.'
+      );
+    }
+
+
+    if (msg) {
+
+      msg.textContent =
+        '✓ Settings saved successfully.';
+
+      msg.style.color =
+        'var(--green)';
+
+
+      setTimeout(
+        () => {
+          msg.textContent = '';
+        },
+        3000
+      );
+    }
+
+
   } catch(e) {
-    if (msg) { msg.textContent = 'Network error. Please try again.'; msg.style.color = 'var(--red)'; }
+
+    if (msg) {
+
+      msg.textContent =
+        e.message ||
+        'Network error. Please try again.';
+
+      msg.style.color =
+        'var(--red)';
+    }
+
+
   } finally {
-    if (btn) { btn.textContent = 'Save Settings'; btn.disabled = false; }
+
+    if (btn) {
+
+      btn.textContent =
+        'Save Settings';
+
+
+      /*
+       * Keep disabled only if Super Admin
+       * returned to All Barangays meanwhile.
+       */
+      btn.disabled =
+        user.role === 'super_admin' &&
+        (
+          typeof getSelectedSuperAdminBarangayId !==
+            'function' ||
+          getSelectedSuperAdminBarangayId() <= 0
+        );
+    }
   }
 }
 
@@ -711,27 +1364,136 @@ async function saveSettings() {
    SETTINGS — Audit Log tab
 ══════════════════════════════════════════════════════ */
 async function loadSettingsAuditLog() {
-  const tbody = document.getElementById('settings-audit-tbody');
+
+  const tbody =
+    document.getElementById(
+      'settings-audit-tbody'
+    );
+
+
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">Loading…</td></tr>';
+
+
+  tbody.innerHTML =
+    '<tr>' +
+      '<td colspan="5" ' +
+      'style="text-align:center;padding:24px;color:var(--text3);">' +
+        'Loading…' +
+      '</td>' +
+    '</tr>';
+
+
   try {
-    const res  = await fetch('api/settings.php?action=audit');
-    const data = await res.json();
-    if (!data.ok || !data.log || !data.log.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">No activity recorded yet.</td></tr>';
+
+    const user =
+      window.CURRENT_USER || {};
+
+
+    let url =
+      'api/settings.php?action=audit';
+
+
+    if (
+      user.role === 'super_admin'
+    ) {
+
+      const barangayId =
+        typeof getSelectedSuperAdminBarangayId ===
+          'function'
+          ? getSelectedSuperAdminBarangayId()
+          : 0;
+
+
+      if (barangayId > 0) {
+
+        url +=
+          '&barangay_id=' +
+          encodeURIComponent(
+            barangayId
+          );
+      }
+    }
+
+
+    const res =
+      await fetch(
+        url,
+        {
+          credentials:'include',
+          cache:'no-store'
+        }
+      );
+
+
+    const data =
+      await res.json();
+
+
+    if (
+      !data.ok ||
+      !data.log ||
+      !data.log.length
+    ) {
+
+      tbody.innerHTML =
+        '<tr>' +
+          '<td colspan="5" ' +
+          'style="text-align:center;padding:24px;color:var(--text3);">' +
+            'No activity recorded yet.' +
+          '</td>' +
+        '</tr>';
+
       return;
     }
-    tbody.innerHTML = data.log.map(r =>
-      '<tr>' +
-        '<td style="font-size:11px;color:var(--text3);white-space:nowrap">' + (r.created_at || '—') + '</td>' +
-        '<td style="font-weight:500">' + _escHtml(r.user_name  || '—') + '</td>' +
-        '<td><span class="badge b-gray" style="font-size:9px">' + _escHtml(r.action || '—') + '</span></td>' +
-        '<td style="font-size:11px">'  + _escHtml(r.detail     || '—') + '</td>' +
-        '<td style="font-family:var(--mono);font-size:11px">' + _escHtml(r.ip_address || '—') + '</td>' +
-      '</tr>'
-    ).join('');
+
+
+    tbody.innerHTML =
+      data.log.map(r =>
+        '<tr>' +
+
+          '<td style="font-size:11px;color:var(--text3);white-space:nowrap">' +
+            (r.created_at || '—') +
+          '</td>' +
+
+          '<td style="font-weight:500">' +
+            _escHtml(
+              r.user_name || '—'
+            ) +
+          '</td>' +
+
+          '<td>' +
+            '<span class="badge b-gray" style="font-size:9px">' +
+              _escHtml(
+                r.action || '—'
+              ) +
+            '</span>' +
+          '</td>' +
+
+          '<td style="font-size:11px">' +
+            _escHtml(
+              r.detail || '—'
+            ) +
+          '</td>' +
+
+          '<td style="font-family:var(--mono);font-size:11px">' +
+            _escHtml(
+              r.ip_address || '—'
+            ) +
+          '</td>' +
+
+        '</tr>'
+      ).join('');
+
+
   } catch(e) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--red);">Failed to load audit log.</td></tr>';
+
+    tbody.innerHTML =
+      '<tr>' +
+        '<td colspan="5" ' +
+        'style="text-align:center;color:var(--red);">' +
+          'Failed to load audit log.' +
+        '</td>' +
+      '</tr>';
   }
 }
 
@@ -867,13 +1629,63 @@ function initTabs() {
    OFFICER MANAGEMENT
 ══════════════════════════════════════════════════════ */
 async function loadOfficers() {
+
   try {
-    const res  = await fetch(API_URL + '?type=officers');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    _officers  = data.officers || [];
-  } catch (err) { console.warn('BICTS: Could not load officers.', err); }
+
+    const res =
+      await fetch(
+        API_URL + '?type=officers',
+        {
+          credentials:'include',
+          cache:'no-store'
+        }
+      );
+
+    if (!res.ok) {
+      throw new Error(
+        'HTTP ' + res.status
+      );
+    }
+
+    const data =
+      await res.json();
+
+    const loaded =
+      Array.isArray(data.officers)
+        ? data.officers
+        : [];
+
+
+    if (
+      (window.CURRENT_USER || {}).role ===
+      'super_admin'
+    ) {
+
+      _allOfficers = loaded;
+
+      applySuperAdminContext();
+
+      return;
+
+    } else {
+
+      _officers = loaded;
+
+      _allOfficers =
+        [...loaded];
+    }
+
+  } catch (err) {
+
+    console.warn(
+      'BICTS: Could not load officers.',
+      err
+    );
+  }
+
+
   renderOfficersTable();
+
   renderOfficerStats();
 }
 
@@ -926,10 +1738,39 @@ function renderOfficerStats() {
 }
 
 function openAddOfficer() {
+
+  const user =
+    window.CURRENT_USER || {};
+
+  /*
+   * Super Admin must choose a barangay
+   * before creating an officer.
+   */
+  if (
+    user.role === 'super_admin' &&
+    getSelectedSuperAdminBarangayId() <= 0
+  ) {
+
+    alert(
+      'Select a barangay from the All Barangays selector before adding an officer.'
+    );
+
+    return;
+  }
+
   _editingOfficerId = null;
-  const titleEl = document.getElementById('officer-modal-title');
-  if (titleEl) titleEl.textContent = 'Add Officer';
+
+  const titleEl =
+    document.getElementById(
+      'officer-modal-title'
+    );
+
+  if (titleEl) {
+    titleEl.textContent = 'Add Officer';
+  }
+
   _clearOfficerForm();
+
   showModal('officerModal');
 }
 
@@ -963,6 +1804,40 @@ async function submitOfficer() {
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
   const isEdit  = _editingOfficerId !== null;
   const payload = { action: isEdit ? 'edit_officer' : 'add_officer', name, rank, contact, email, status };
+
+  if (
+  !isEdit &&
+  (window.CURRENT_USER || {}).role ===
+    'super_admin'
+) {
+
+  const selectedBarangayId =
+    getSelectedSuperAdminBarangayId();
+
+  if (selectedBarangayId <= 0) {
+
+    if (msgEl) {
+      msgEl.textContent =
+        'Select a barangay before adding an officer.';
+
+      msgEl.style.color =
+        'var(--red,#dc2626)';
+    }
+
+    if (btn) {
+      btn.textContent =
+        'Save Officer';
+
+      btn.disabled = false;
+    }
+
+    return;
+  }
+
+  payload.barangay_id =
+    selectedBarangayId;
+}
+
   if (isEdit) payload.id = _editingOfficerId;
   try {
     const res    = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -975,10 +1850,53 @@ async function submitOfficer() {
         complaints.forEach(c => { if (String(c.officer_id) === String(_editingOfficerId)) c.officer = name; });
         renderAll();
       } else {
-        _officers.push({ id: result.id, name, rank, contact, email, status, barangay_id: (window.CURRENT_USER||{}).barangay_id||0, created_at: new Date().toISOString().slice(0,19).replace('T',' ') });
+        const newOfficer = {
+
+            id: result.id,
+            name,
+            rank,
+            contact,
+            email,
+            status,
+
+            barangay_id:
+              (window.CURRENT_USER || {}).role ===
+              'super_admin'
+                ? getSelectedSuperAdminBarangayId()
+                : Number(
+                    (window.CURRENT_USER || {})
+                      .barangay_id || 0
+                  ),
+
+            created_at:
+              new Date()
+                .toISOString()
+                .slice(0,19)
+                .replace('T',' ')
+          };
+
+
+          _officers.push(newOfficer);
+
+          _allOfficers.push(newOfficer);
       }
       renderOfficersTable(); renderOfficerStats();
-      await pushNotif(isEdit ? 'Officer updated: ' + name : 'New officer added: ' + name, 'success');
+      const notifBarangayId =
+        (window.CURRENT_USER || {}).role ===
+          'super_admin'
+            ? getSelectedSuperAdminBarangayId()
+            : Number(
+                (window.CURRENT_USER || {})
+                  .barangay_id || 0
+              );
+
+      await pushNotif(
+        isEdit
+          ? 'Officer updated: ' + name
+          : 'New officer added: ' + name,
+        'success',
+        notifBarangayId
+      );
     } else {
       if (msgEl) { msgEl.textContent = result.error || 'Failed to save officer.'; msgEl.style.color = 'var(--red,#dc2626)'; }
     }

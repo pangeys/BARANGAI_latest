@@ -404,41 +404,175 @@ if ($method === 'GET' && $type === 'notes') {
 }
 
 if ($method === 'POST' && $action === 'add_note') {
-    $complaint_id = trim((string)($body['complaint_id'] ?? ''));
-    $content      = trim((string)($body['content']      ?? ''));
-    $author       = trim((string)($body['author']       ?? 'Unknown'));
-    $author_role  = trim((string)($body['author_role']  ?? ''));
+
+    $complaint_id =
+        trim((string)($body['complaint_id'] ?? ''));
+
+    $content =
+        trim((string)($body['content'] ?? ''));
+
+    /*
+     * Never trust author identity/role from the browser.
+     */
+    $author =
+        $userName;
+
+    $author_role =
+        (string)($sessionUser['role'] ?? '');
+
+
+    if (
+        $complaint_id === '' ||
+        $content === ''
+    ) {
+        respond([
+            'success' => false,
+            'error' =>
+                'complaint_id and content are required'
+        ], 400);
+    }
+
+
+    /*
+     * Resolve the complaint and its true barangay
+     * before creating the note.
+     */
     if ($isSuperAdmin) {
-        $targetStmt = $conn->prepare(
-        "SELECT barangay_id
-         FROM complaints
-         WHERE complaint_id = ?
-         LIMIT 1"
+
+        $targetStmt =
+            $conn->prepare(
+                "SELECT barangay_id
+                 FROM complaints
+                 WHERE complaint_id = ?
+                 LIMIT 1"
+            );
+
+        $targetStmt->bind_param(
+            's',
+            $complaint_id
         );
-            $targetStmt->bind_param('s', $complaint_id);
-            $targetStmt->execute();
-            $targetRow = $targetStmt->get_result()->fetch_assoc();
-            $targetStmt->close();
 
-        if (!$targetRow) {
-            respond(['success' => false, 'error' => 'Complaint not found'], 404);
-        }
+    } else {
 
-        $bid = $targetRow['barangay_id'] === null
+        /*
+         * Normal Admin may add notes only to
+         * complaints belonging to their barangay.
+         */
+        $targetStmt =
+            $conn->prepare(
+                "SELECT barangay_id
+                 FROM complaints
+                 WHERE complaint_id = ?
+                   AND barangay_id = ?
+                 LIMIT 1"
+            );
+
+        $targetStmt->bind_param(
+            'si',
+            $complaint_id,
+            $barangay_id
+        );
+    }
+
+
+    $targetStmt->execute();
+
+    $targetRow =
+        $targetStmt
+            ->get_result()
+            ->fetch_assoc();
+
+    $targetStmt->close();
+
+
+    if (!$targetRow) {
+
+        respond([
+            'success' => false,
+            'error' =>
+                'Complaint not found or access denied'
+        ], 404);
+    }
+
+
+    $bid =
+        $targetRow['barangay_id'] === null
             ? null
             : (int)$targetRow['barangay_id'];
-    } else {
-        $bid = $barangay_id;
+
+
+    if ($bid === null || $bid <= 0) {
+
+        respond([
+            'success' => false,
+            'error' =>
+                'Complaint barangay is not configured'
+        ], 422);
     }
-    if ($complaint_id === '' || $content === '') respond(['success' => false, 'error' => 'complaint_id and content are required'], 400);
-    $stmt = $conn->prepare("INSERT INTO case_notes (complaint_id, author, author_role, content, barangay_id) VALUES (?, ?, ?, ?, ?)");
-    $stmt->bind_param('ssssi', $complaint_id, $author, $author_role, $content, $bid);
-    $ok    = $stmt->execute();
-    $newId = $conn->insert_id;
-    $createdAt = date('Y-m-d H:i:s');
+
+
+    $stmt =
+        $conn->prepare(
+            "INSERT INTO case_notes
+                (
+                    complaint_id,
+                    author,
+                    author_role,
+                    content,
+                    barangay_id
+                )
+             VALUES (?, ?, ?, ?, ?)"
+        );
+
+
+    $stmt->bind_param(
+        'ssssi',
+        $complaint_id,
+        $author,
+        $author_role,
+        $content,
+        $bid
+    );
+
+
+    $ok =
+        $stmt->execute();
+
+    $newId =
+        (int)$conn->insert_id;
+
+    $createdAt =
+        date('Y-m-d H:i:s');
+
     $stmt->close();
-    if ($ok) logActivity($conn, $userId, $userName, $barangay_id, 'note_added', "Note #$newId added to complaint $complaint_id");
-    respond(['success'=>(bool)$ok,'id'=>$newId,'created_at'=>$createdAt,'updated_at'=>$createdAt]);
+
+
+    if (!$ok) {
+
+        respond([
+            'success' => false,
+            'error' =>
+                'Could not save note'
+        ], 500);
+    }
+
+
+    logActivity(
+        $conn,
+        $userId,
+        $userName,
+        $bid,
+        'note_added',
+        "Note #$newId added to complaint $complaint_id"
+    );
+
+
+    respond([
+        'success' => true,
+        'id' => $newId,
+        'created_at' => $createdAt,
+        'updated_at' => $createdAt
+    ]);
 }
 
 if ($method === 'POST' && $action === 'edit_note') {
@@ -483,20 +617,64 @@ if ($method === 'POST' && $action === 'add_officer') {
     $email   = trim((string)($body['email']   ?? ''));
     $status  = in_array(($body['status'] ?? ''), ['Active', 'Inactive']) ? $body['status'] : 'Active';
     if ($isSuperAdmin) {
+
+    $bid = (int)(
+        $body['barangay_id'] ?? 0
+    );
+
+    if ($bid <= 0) {
         respond([
             'success' => false,
-            'error' => 'Super Admin must explicitly select a barangay when adding an officer.'
+            'error' =>
+                'Super Admin must explicitly select a barangay when adding an officer.'
         ], 422);
     }
 
-    $bid = $barangay_id;
+    /*
+     * Validate the selected barangay
+     * before creating the officer.
+     */
+    $barangayCheck =
+        $conn->prepare(
+            "SELECT id
+               FROM barangays
+              WHERE id = ?
+              LIMIT 1"
+        );
+
+    $barangayCheck->bind_param(
+        'i',
+        $bid
+    );
+
+    $barangayCheck->execute();
+
+    $barangayExists =
+        $barangayCheck
+            ->get_result()
+            ->fetch_assoc();
+
+    $barangayCheck->close();
+
+    if (!$barangayExists) {
+        respond([
+            'success' => false,
+            'error' =>
+                'Selected barangay does not exist.'
+        ], 422);
+        }
+
+    } else {
+
+        $bid = $barangay_id;
+    }
     if ($name === '') respond(['success' => false, 'error' => 'Officer name is required'], 400);
     $stmt = $conn->prepare("INSERT INTO officers (name, `rank`, contact, email, status, barangay_id) VALUES (?, ?, ?, ?, ?, ?)");
     $stmt->bind_param('sssssi', $name, $rank, $contact, $email, $status, $bid);
     $ok    = $stmt->execute();
     $newId = $conn->insert_id;
     $stmt->close();
-    if ($ok) logActivity($conn, $userId, $userName, $barangay_id, 'officer_added', "Officer '$name' added (ID: $newId)");
+    if ($ok) logActivity($conn, $userId, $userName, $bid, 'officer_added', "Officer '$name' added (ID: $newId)");
     respond(['success' => (bool)$ok, 'id' => $newId]);
 }
 
@@ -1094,13 +1272,23 @@ if ($method === 'POST' && $action === 'add_notification') {
     $ntype = (string)($body['notif_type'] ?? 'info');
     $time  = (string)($body['time']       ?? '');
     if ($isSuperAdmin) {
-        respond([
-            'success' => false,
-            'error' => 'Super Admin notifications require an explicit target scope.'
-        ], 422);
-    }
 
-    $bid = $barangay_id;
+        $bid = (int)(
+            $body['barangay_id'] ?? 0
+        );
+
+        if ($bid <= 0) {
+            respond([
+                'success' => false,
+                'error' =>
+                    'Super Admin notifications require an explicit target scope.'
+            ], 422);
+        }
+
+    } else {
+
+        $bid = $barangay_id;
+    }
     $stmt = $conn->prepare("INSERT INTO notifications (msg, type, time, barangay_id) VALUES (?, ?, ?, ?)");
     $stmt->bind_param('sssi', $msg, $ntype, $time, $bid);
     $stmt->execute();
@@ -1125,42 +1313,266 @@ if ($method === 'POST' && $action === 'mark_read') {
    THIS WAS MISSING — added so resolves persist to the DB.
 ════════════════════════════════════════════════════ */
 if ($method === 'PUT' && $action === 'update_status') {
-    $id         = (string)($body['id']          ?? '');
-    $status     = (string)($body['status']      ?? '');
-    $sb         = (string)($body['sb']          ?? 'b-gray');
-    $resolvedAt = (string)($body['resolved_at'] ?? '');
 
-    if ($id === '') respond(['success' => false, 'error' => 'id required'], 400);
+    $id =
+        trim((string)($body['id'] ?? ''));
 
-    if (!$isSuperAdmin) {
-        $stmt = $conn->prepare(
-            "UPDATE complaints SET status = ?, status_badge = ?, resolved_at = ?
-              WHERE complaint_id = ? AND barangay_id = ?"
-        );
-        $stmt->bind_param('ssssi', $status, $sb, $resolvedAt, $id, $barangay_id);
-    } else {
-        $stmt = $conn->prepare(
-            "UPDATE complaints SET status = ?, status_badge = ?, resolved_at = ?
-              WHERE complaint_id = ?"
-        );
-        $stmt->bind_param('ssss', $status, $sb, $resolvedAt, $id);
+    $status =
+        trim((string)($body['status'] ?? ''));
+
+    $sb =
+        trim((string)($body['sb'] ?? 'b-gray'));
+
+    $resolvedAt =
+        trim((string)($body['resolved_at'] ?? ''));
+
+
+    if ($id === '') {
+        respond([
+            'success' => false,
+            'error' => 'id required'
+        ], 400);
     }
-    $ok = $stmt->execute();
+
+
+    /*
+     * Validate status instead of accepting arbitrary
+     * values supplied by the browser.
+     */
+    $allowedStatuses = [
+        'Open',
+        'In Progress',
+        'Resolved',
+        'Closed'
+    ];
+
+    if (!in_array($status, $allowedStatuses, true)) {
+        respond([
+            'success' => false,
+            'error' => 'Invalid complaint status'
+        ], 422);
+    }
+
+
+    /*
+     * First resolve the exact authorized complaint.
+     * This gives us its category and true barangay
+     * before any write occurs.
+     */
+    if ($isSuperAdmin) {
+
+        $check =
+            $conn->prepare(
+                "SELECT complaint_id,
+                        category,
+                        barangay_id,
+                        status
+                 FROM complaints
+                 WHERE complaint_id = ?
+                 LIMIT 1"
+            );
+
+        $check->bind_param(
+            's',
+            $id
+        );
+
+    } else {
+
+        $check =
+            $conn->prepare(
+                "SELECT complaint_id,
+                        category,
+                        barangay_id,
+                        status
+                 FROM complaints
+                 WHERE complaint_id = ?
+                   AND barangay_id = ?
+                 LIMIT 1"
+            );
+
+        $check->bind_param(
+            'si',
+            $id,
+            $barangay_id
+        );
+    }
+
+
+    $check->execute();
+
+    $complaint =
+        $check
+            ->get_result()
+            ->fetch_assoc();
+
+    $check->close();
+
+
+    if (!$complaint) {
+
+        respond([
+            'success' => false,
+            'error' =>
+                $isSuperAdmin
+                    ? 'Complaint not found'
+                    : 'Complaint not found in your barangay'
+        ], 404);
+    }
+
+
+    $targetBarangayId =
+        (int)$complaint['barangay_id'];
+
+    $category =
+        (string)($complaint['category'] ?? '');
+
+
+    /*
+     * Resolve only the authorized complaint.
+     */
+    if ($status === 'Resolved') {
+
+        if ($isSuperAdmin) {
+
+            $stmt =
+                $conn->prepare(
+                    "UPDATE complaints
+                     SET status = ?,
+                         status_badge = ?,
+                         resolved_at = ?
+                     WHERE complaint_id = ?"
+                );
+
+            $stmt->bind_param(
+                'ssss',
+                $status,
+                $sb,
+                $resolvedAt,
+                $id
+            );
+
+        } else {
+
+            $stmt =
+                $conn->prepare(
+                    "UPDATE complaints
+                     SET status = ?,
+                         status_badge = ?,
+                         resolved_at = ?
+                     WHERE complaint_id = ?
+                       AND barangay_id = ?"
+                );
+
+            $stmt->bind_param(
+                'ssssi',
+                $status,
+                $sb,
+                $resolvedAt,
+                $id,
+                $barangay_id
+            );
+        }
+
+    } else {
+
+        /*
+         * Non-resolved statuses should not retain
+         * an old resolved timestamp.
+         */
+        if ($isSuperAdmin) {
+
+            $stmt =
+                $conn->prepare(
+                    "UPDATE complaints
+                     SET status = ?,
+                         status_badge = ?,
+                         resolved_at = NULL
+                     WHERE complaint_id = ?"
+                );
+
+            $stmt->bind_param(
+                'sss',
+                $status,
+                $sb,
+                $id
+            );
+
+        } else {
+
+            $stmt =
+                $conn->prepare(
+                    "UPDATE complaints
+                     SET status = ?,
+                         status_badge = ?,
+                         resolved_at = NULL
+                     WHERE complaint_id = ?
+                       AND barangay_id = ?"
+                );
+
+            $stmt->bind_param(
+                'sssi',
+                $status,
+                $sb,
+                $id,
+                $barangay_id
+            );
+        }
+    }
+
+
+    $ok =
+        $stmt->execute();
+
+    $affected =
+        $stmt->affected_rows;
+
     $stmt->close();
 
-    /* Log resolves (with category) so Admin Stats can count them */
-    if ($ok && $status === 'Resolved') {
-        $cat = '';
-        $cs = $conn->prepare("SELECT category FROM complaints WHERE complaint_id = ? LIMIT 1");
-        $cs->bind_param('s', $id);
-        $cs->execute();
-        $cr = $cs->get_result()->fetch_assoc();
-        $cs->close();
-        if ($cr) $cat = $cr['category'];
-        logActivity($conn, $userId, $userName, $barangay_id,
-            'complaint_resolved', "Complaint $id resolved [cat:$cat]");
+
+    if (!$ok) {
+
+        respond([
+            'success' => false,
+            'error' => 'Could not update complaint status'
+        ], 500);
     }
-    respond(['success' => (bool)$ok]);
+
+
+    /*
+     * No audit record when nothing actually changed.
+     */
+    if ($affected < 1) {
+
+        respond([
+            'success' => false,
+            'error' =>
+                'Complaint status did not change'
+        ], 409);
+    }
+
+
+    /*
+     * Only a real successful resolve gets
+     * a resolve audit event.
+     */
+    if ($status === 'Resolved') {
+
+        logActivity(
+            $conn,
+            $userId,
+            $userName,
+            $targetBarangayId,
+            'complaint_resolved',
+            "Complaint $id resolved [cat:$category]"
+        );
+    }
+
+
+    respond([
+        'success' => true,
+        'affected' => $affected
+    ]);
 }
 
 
@@ -1168,32 +1580,204 @@ if ($method === 'PUT' && $action === 'update_status') {
    PUT action=close_complaint
 ════════════════════════════════════════════════════ */
 if ($method === 'PUT' && $action === 'close_complaint') {
-    $id     = (string)($body['id']     ?? '');
-    $reason = (string)($body['reason'] ?? 'Closed');
-    $sb     = 'b-gray';
-    $closedAt = date('h:i A');
-    if ($id === '') respond(['success' => false, 'error' => 'id required'], 400);
-    if (!$isSuperAdmin) {
-        $stmt = $conn->prepare("UPDATE complaints SET status = 'Closed', status_badge = ?, close_reason = ?, resolved_at = ? WHERE complaint_id = ? AND barangay_id = ?");
-        $stmt->bind_param('ssssi', $sb, $reason, $closedAt, $id, $barangay_id);
+
+    $id =
+        trim((string)($body['id'] ?? ''));
+
+    $reason =
+        trim((string)($body['reason'] ?? 'Closed'));
+
+    $sb =
+        'b-gray';
+
+    $closedAt =
+        date('h:i A');
+
+
+    if ($id === '') {
+
+        respond([
+            'success' => false,
+            'error' => 'id required'
+        ], 400);
+    }
+
+
+    /*
+     * Resolve the authorized complaint first.
+     */
+    if ($isSuperAdmin) {
+
+        $check =
+            $conn->prepare(
+                "SELECT complaint_id,
+                        category,
+                        barangay_id,
+                        status
+                 FROM complaints
+                 WHERE complaint_id = ?
+                 LIMIT 1"
+            );
+
+        $check->bind_param(
+            's',
+            $id
+        );
+
     } else {
-        $stmt = $conn->prepare("UPDATE complaints SET status = 'Closed', status_badge = ?, close_reason = ?, resolved_at = ? WHERE complaint_id = ?");
-        $stmt->bind_param('ssss', $sb, $reason, $closedAt, $id);
+
+        $check =
+            $conn->prepare(
+                "SELECT complaint_id,
+                        category,
+                        barangay_id,
+                        status
+                 FROM complaints
+                 WHERE complaint_id = ?
+                   AND barangay_id = ?
+                 LIMIT 1"
+            );
+
+        $check->bind_param(
+            'si',
+            $id,
+            $barangay_id
+        );
     }
-    $ok = $stmt->execute();
+
+
+    $check->execute();
+
+    $complaint =
+        $check
+            ->get_result()
+            ->fetch_assoc();
+
+    $check->close();
+
+
+    if (!$complaint) {
+
+        respond([
+            'success' => false,
+            'error' =>
+                $isSuperAdmin
+                    ? 'Complaint not found'
+                    : 'Complaint not found in your barangay'
+        ], 404);
+    }
+
+
+    $targetBarangayId =
+        (int)$complaint['barangay_id'];
+
+    $category =
+        (string)($complaint['category'] ?? '');
+
+
+    /*
+     * Do not create duplicate close actions.
+     */
+    if (
+        (string)$complaint['status'] ===
+        'Closed'
+    ) {
+
+        respond([
+            'success' => false,
+            'error' =>
+                'Complaint is already closed'
+        ], 409);
+    }
+
+
+    if ($isSuperAdmin) {
+
+        $stmt =
+            $conn->prepare(
+                "UPDATE complaints
+                 SET status = 'Closed',
+                     status_badge = ?,
+                     close_reason = ?,
+                     resolved_at = ?
+                 WHERE complaint_id = ?"
+            );
+
+        $stmt->bind_param(
+            'ssss',
+            $sb,
+            $reason,
+            $closedAt,
+            $id
+        );
+
+    } else {
+
+        $stmt =
+            $conn->prepare(
+                "UPDATE complaints
+                 SET status = 'Closed',
+                     status_badge = ?,
+                     close_reason = ?,
+                     resolved_at = ?
+                 WHERE complaint_id = ?
+                   AND barangay_id = ?"
+            );
+
+        $stmt->bind_param(
+            'ssssi',
+            $sb,
+            $reason,
+            $closedAt,
+            $id,
+            $barangay_id
+        );
+    }
+
+
+    $ok =
+        $stmt->execute();
+
+    $affected =
+        $stmt->affected_rows;
+
     $stmt->close();
-    if ($ok) {
-        $catC = '';
-        $csC = $conn->prepare("SELECT category FROM complaints WHERE complaint_id = ? LIMIT 1");
-        $csC->bind_param('s', $id);
-        $csC->execute();
-        $crC = $csC->get_result()->fetch_assoc();
-        $csC->close();
-        if ($crC) $catC = $crC['category'];
-        logActivity($conn, $userId, $userName, $barangay_id,
-            'complaint_closed', "Complaint $id closed — $reason [cat:$catC]");
+
+
+    if (!$ok) {
+
+        respond([
+            'success' => false,
+            'error' =>
+                'Could not close complaint'
+        ], 500);
     }
-    respond(['success' => (bool)$ok]);
+
+
+    if ($affected < 1) {
+
+        respond([
+            'success' => false,
+            'error' =>
+                'Complaint was not changed'
+        ], 409);
+    }
+
+
+    logActivity(
+        $conn,
+        $userId,
+        $userName,
+        $targetBarangayId,
+        'complaint_closed',
+        "Complaint $id closed — $reason [cat:$category]"
+    );
+
+
+    respond([
+        'success' => true,
+        'affected' => $affected
+    ]);
 }
 
 respond(["error" => "Unknown request"], 400);

@@ -83,6 +83,12 @@
           <span class="nav-icon">⚙️</span> System Settings
         </div>
 
+        <div class="nav-item"
+            data-sa-screen="activity-logs"
+            onclick="showScreen('activity-logs',this)">
+          <span class="nav-icon">🧾</span> Activity Logs
+        </div>
+
       </div>
 
       <!-- NORMAL BARANGAY ADMIN NAVIGATION -->
@@ -648,7 +654,17 @@
   <div id="users-panel">
     <div class="card"><div class="card-body np">
       <table class="tbl">
-        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Barangay</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Last Login</th>
+            <th></th>
+          </tr>
+        </thead>
         <tbody id="users-tbody"></tbody>
       </table>
     </div></div>
@@ -669,6 +685,226 @@
       </table>
     </div></div>
   </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SUPER ADMIN — GLOBAL ACTIVITY LOGS
+═══════════════════════════════════════════════════ -->
+<div id="screen-activity-logs" class="screen">
+
+  <div class="page-header">
+
+    <div class="page-title">
+      Activity Logs
+    </div>
+
+    <div class="page-sub">
+      System-wide audit trail of recorded BarangAI activity.
+    </div>
+
+  </div>
+
+
+  <!-- FILTERS -->
+  <div
+    class="card"
+    style="margin-bottom:14px;">
+
+    <div class="card-body">
+
+      <div
+        style="
+          display:grid;
+          grid-template-columns:2fr 1fr 1fr;
+          gap:10px;
+          align-items:end;
+        ">
+
+
+        <div class="field">
+
+          <div class="label">
+            Search
+          </div>
+
+          <input
+            class="inp"
+            id="sa-log-search"
+            placeholder="Search user, action, barangay, description…"
+            oninput="renderGlobalActivityLogs()">
+
+        </div>
+
+
+        <div class="field">
+
+          <div class="label">
+            Role
+          </div>
+
+          <select
+            class="inp sel"
+            id="sa-log-role-filter"
+            onchange="renderGlobalActivityLogs()">
+
+            <option value="">
+              All Roles
+            </option>
+
+            <option value="super_admin">
+              Super Admin
+            </option>
+
+            <option value="admin">
+              Administrator
+            </option>
+
+            <option value="staff">
+              Staff
+            </option>
+
+            <option value="viewer">
+              Viewer
+            </option>
+
+            <option value="resident">
+              Resident
+            </option>
+
+          </select>
+
+        </div>
+
+
+        <div class="field">
+
+          <div class="label">
+            Action
+          </div>
+
+          <select
+            class="inp sel"
+            id="sa-log-action-filter"
+            onchange="renderGlobalActivityLogs()">
+
+            <option value="">
+              All Actions
+            </option>
+
+          </select>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- LOG TABLE -->
+  <div class="card">
+
+    <div class="card-header">
+
+      <div>
+
+        <div class="card-title">
+          Global Audit Trail
+        </div>
+
+        <div
+          id="sa-log-count"
+          style="
+            font-size:11px;
+            color:var(--text3);
+            margin-top:3px;
+          ">
+          Loading activity…
+        </div>
+
+      </div>
+
+
+      <button
+        class="btn btn-ghost btn-sm"
+        type="button"
+        onclick="loadGlobalActivityLogs()">
+        ↻ Refresh
+      </button>
+
+    </div>
+
+
+    <div class="card-body np">
+
+      <div style="overflow-x:auto;">
+
+        <table class="tbl">
+
+          <thead>
+
+            <tr>
+
+              <th style="white-space:nowrap;">
+                Timestamp
+              </th>
+
+              <th>
+                User
+              </th>
+
+              <th>
+                Role
+              </th>
+
+              <th>
+                Barangay
+              </th>
+
+              <th>
+                Action
+              </th>
+
+              <th>
+                Description
+              </th>
+
+              <th>
+                IP Address
+              </th>
+
+            </tr>
+
+          </thead>
+
+
+          <tbody id="sa-global-log-tbody">
+
+            <tr>
+
+              <td
+                colspan="7"
+                style="
+                  text-align:center;
+                  padding:30px;
+                  color:var(--text3);
+                ">
+                Open Activity Logs to load records.
+              </td>
+
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </div>
+
+  </div>
+
 </div>
 
 <!-- NOTIFICATIONS -->
@@ -1158,6 +1394,168 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════
+     SUPER ADMIN — ADD / MANAGE BARANGAY MODAL
+═══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="saBarangayModal">
+
+  <div class="modal" style="max-width:560px;">
+
+    <div class="modal-header">
+
+      <div>
+        <div class="modal-title" id="sa-brgy-modal-title">
+          Add Barangay
+        </div>
+
+        <div style="font-size:11px;color:var(--text3);margin-top:3px;">
+          Manage the barangay record used by BarangAI.
+        </div>
+      </div>
+
+      <button
+        type="button"
+        class="modal-x"
+        onclick="closeSaBarangayModal()">
+        ✕
+      </button>
+
+    </div>
+
+
+    <div class="modal-body">
+
+      <div
+        id="sa-brgy-modal-msg"
+        style="display:none;margin-bottom:14px;">
+      </div>
+
+
+      <input
+        type="hidden"
+        id="sa-brgy-id">
+
+
+      <div class="form-row full">
+
+        <div class="field">
+
+          <div class="label">
+            Barangay Name <span>*</span>
+          </div>
+
+          <input
+            class="inp"
+            id="sa-brgy-name"
+            maxlength="150"
+            placeholder="e.g. San Roque">
+
+        </div>
+
+      </div>
+
+
+      <div class="form-row">
+
+        <div class="field">
+
+          <div class="label">
+            Municipality / City
+          </div>
+
+          <input
+            class="inp"
+            id="sa-brgy-municipality"
+            maxlength="150"
+            placeholder="e.g. San Pablo City">
+
+        </div>
+
+
+        <div class="field">
+
+          <div class="label">
+            Administrator Email
+          </div>
+
+          <input
+            class="inp"
+            id="sa-brgy-email"
+            type="email"
+            placeholder="admin@example.com">
+
+        </div>
+
+      </div>
+
+
+      <div class="form-row full">
+
+        <div class="field">
+
+          <div class="label">
+            Status
+          </div>
+
+          <select
+            class="inp sel"
+            id="sa-brgy-status">
+
+            <option value="Active">
+              Active
+            </option>
+
+            <option value="Inactive">
+              Inactive
+            </option>
+
+            <option value="Suspended">
+              Suspended
+            </option>
+
+          </select>
+
+        </div>
+
+      </div>
+
+
+      <div
+        id="sa-brgy-status-note"
+        class="alert alert-info"
+        style="margin-bottom:0;">
+
+        Barangay status controls whether the barangay is active,
+        temporarily inactive, or access-restricted in BarangAI.
+
+      </div>
+
+    </div>
+
+
+    <div class="modal-footer">
+
+      <button
+        class="btn btn-secondary"
+        type="button"
+        onclick="closeSaBarangayModal()">
+        Cancel
+      </button>
+
+      <button
+        class="btn btn-primary"
+        type="button"
+        id="sa-brgy-save-btn"
+        onclick="saveSaBarangay()">
+        Save Barangay
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════
      ASSIGN OFFICER MODAL  ← UPDATED: dynamic, DB-backed
 ═══════════════════════════════════════════════════ -->
 <div id="assignModal" class="modal-overlay">
@@ -1316,6 +1714,145 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════
+     SECURE SUPER ADMIN ROLE CHANGE
+═══════════════════════════════════════════════════ -->
+<div id="secureRoleModal" class="modal-overlay">
+
+  <div class="modal" style="max-width:480px;">
+
+    <div class="modal-header">
+
+      <div>
+        <div
+          class="modal-title"
+          id="sr-title">
+          Secure Role Change
+        </div>
+
+        <div
+          style="font-size:11px;color:var(--text3);margin-top:3px;">
+          Sensitive role changes require re-verification.
+        </div>
+      </div>
+
+      <div
+        class="modal-close"
+        onclick="closeSecureRoleModal()">
+        ✕
+      </div>
+
+    </div>
+
+
+    <div class="modal-body">
+
+      <input
+        type="hidden"
+        id="sr-user-id">
+
+      <input
+        type="hidden"
+        id="sr-operation">
+
+
+      <div
+        id="sr-warning"
+        class="alert alert-info"
+        style="margin-bottom:14px;">
+      </div>
+
+
+      <div
+        id="sr-msg"
+        style="font-size:12px;min-height:18px;margin-bottom:10px;">
+      </div>
+
+
+      <div
+        id="sr-demote-barangay-wrap"
+        class="field"
+        style="display:none;margin-bottom:14px;">
+
+        <div class="label">
+          Assign to Barangay <span>*</span>
+        </div>
+
+        <select
+          class="inp sel"
+          id="sr-barangay">
+          <option value="">
+            -- Select Barangay --
+          </option>
+        </select>
+
+      </div>
+
+
+      <div
+        class="field"
+        style="margin-bottom:14px;">
+
+        <div class="label">
+          Current Password <span>*</span>
+        </div>
+
+        <input
+          class="inp"
+          id="sr-password"
+          type="password"
+          autocomplete="current-password"
+          placeholder="Enter your current password">
+
+      </div>
+
+
+      <div class="field">
+
+        <div class="label">
+          Authenticator Code <span>*</span>
+        </div>
+
+        <input
+          class="inp"
+          id="sr-totp"
+          type="text"
+          inputmode="numeric"
+          maxlength="6"
+          autocomplete="one-time-code"
+          placeholder="6-digit code">
+
+        <div
+          style="font-size:10px;color:var(--text3);margin-top:5px;">
+          Use a fresh code from your authenticator app.
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="modal-footer">
+
+      <button
+        class="btn btn-secondary"
+        onclick="closeSecureRoleModal()">
+        Cancel
+      </button>
+
+      <button
+        class="btn btn-primary"
+        id="sr-submit-btn"
+        onclick="submitSecureRoleChange()">
+        Confirm Role Change
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
 <!-- ADD USER MODAL -->
 <div id="addUserModal" class="modal-overlay">
   <div class="modal" style="max-width:460px;">
@@ -1388,8 +1925,8 @@
 <script src="js/classifier.js?v=20260814-split2"></script>
 <script src="js/dataset.js"></script>
 <script src="js/password-rules.js"></script>
-<script src="js/render.js"></script>
-<script src="js/app.js"></script>
+<script src="js/render.js?v=20260815-reports1"></script>
+<script src="js/app.js?v=20260815-settings5"></script>
 <script src="js/mobile.js"></script>
 
 <script>
@@ -1566,6 +2103,28 @@
 
           select.appendChild(option);
         });
+        select.addEventListener(
+        'change',
+        function(){
+
+          if (
+            typeof applySuperAdminContext ===
+            'function'
+          ) {
+            applySuperAdminContext();
+          }
+        }
+        );
+      }
+
+            /*
+      * Initial Super Admin scope = All Barangays.
+      */
+      if (
+        typeof applySuperAdminContext ===
+        'function'
+      ) {
+        applySuperAdminContext();
       }
 
       /*
@@ -1668,9 +2227,12 @@
 
                   '<td>' +
                     '<button class="btn btn-ghost btn-sm" ' +
-                    'type="button" disabled>' +
-                    'Manage' +
-                    '</button>' +
+                  'type="button" ' +
+                  'onclick="openManageSaBarangay(' +
+                  Number(brgy.id) +
+                  ')">' +
+                  'Manage' +
+                  '</button>' +
                   '</td>' +
 
                 '</tr>'
@@ -1724,7 +2286,663 @@
   shell.style.display = '';
 
 })();
+/*
+ * ════════════════════════════════════════════════════
+ * SUPER ADMIN — BARANGAY MANAGEMENT UI
+ * ════════════════════════════════════════════════════
+ */
 
+function showSaBarangayMessage(type, message){
+
+  const el =
+    document.getElementById('sa-brgy-modal-msg');
+
+  if (!el) return;
+
+  el.style.display = 'block';
+
+  el.className =
+    type === 'error'
+      ? 'alert alert-danger'
+      : 'alert alert-success';
+
+  el.textContent = message;
+}
+
+
+function clearSaBarangayMessage(){
+
+  const el =
+    document.getElementById('sa-brgy-modal-msg');
+
+  if (!el) return;
+
+  el.style.display = 'none';
+  el.textContent = '';
+}
+
+
+function openAddSaBarangay(){
+
+  clearSaBarangayMessage();
+
+  document.getElementById(
+    'sa-brgy-modal-title'
+  ).textContent = 'Add Barangay';
+
+  document.getElementById(
+    'sa-brgy-id'
+  ).value = '';
+
+  document.getElementById(
+    'sa-brgy-name'
+  ).value = '';
+
+  document.getElementById(
+    'sa-brgy-municipality'
+  ).value = '';
+
+  document.getElementById(
+    'sa-brgy-email'
+  ).value = '';
+
+  document.getElementById(
+    'sa-brgy-status'
+  ).value = 'Active';
+
+  const modal =
+    document.getElementById(
+      'saBarangayModal'
+    );
+
+  if (modal) {
+    modal.classList.add('open');
+  }
+}
+
+
+function openManageSaBarangay(id){
+
+  clearSaBarangayMessage();
+
+  const barangays =
+    window.SUPER_ADMIN_BARANGAYS || [];
+
+  const brgy =
+    barangays.find(
+      b => Number(b.id) === Number(id)
+    );
+
+  if (!brgy) {
+    alert('Barangay record not found.');
+    return;
+  }
+
+  document.getElementById(
+    'sa-brgy-modal-title'
+  ).textContent = 'Manage Barangay';
+
+  document.getElementById(
+    'sa-brgy-id'
+  ).value = brgy.id;
+
+  document.getElementById(
+    'sa-brgy-name'
+  ).value = brgy.name || '';
+
+  document.getElementById(
+    'sa-brgy-municipality'
+  ).value = brgy.municipality || '';
+
+  document.getElementById(
+    'sa-brgy-email'
+  ).value = brgy.admin_email || '';
+
+  document.getElementById(
+    'sa-brgy-status'
+  ).value = brgy.status || 'Active';
+
+  const modal =
+    document.getElementById(
+      'saBarangayModal'
+    );
+
+  if (modal) {
+    modal.classList.add('open');
+  }
+}
+
+
+function closeSaBarangayModal(){
+
+  const modal =
+    document.getElementById(
+      'saBarangayModal'
+    );
+
+  if (modal) {
+    modal.classList.remove('open');
+  }
+}
+
+
+async function refreshSaBarangays(){
+
+  const response =
+    await fetch(
+      'api.php?type=barangays',
+      {
+        credentials:'include',
+        cache:'no-store'
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if (!response.ok || !data.ok) {
+    throw new Error(
+      data.error ||
+      'Could not reload barangays'
+    );
+  }
+
+  const barangays =
+    Array.isArray(data.barangays)
+      ? data.barangays
+      : [];
+
+  window.SUPER_ADMIN_BARANGAYS =
+    barangays;
+
+
+  /*
+   * Summary cards
+   */
+  const total =
+    barangays.length;
+
+  const active =
+    barangays.filter(
+      b => b.status === 'Active'
+    ).length;
+
+  const inactive =
+    barangays.filter(
+      b => b.status === 'Inactive'
+    ).length;
+
+  const suspended =
+    barangays.filter(
+      b => b.status === 'Suspended'
+    ).length;
+
+
+  const totalEl =
+    document.getElementById(
+      'sa-brgy-total'
+    );
+
+  const activeEl =
+    document.getElementById(
+      'sa-brgy-active'
+    );
+
+  const inactiveEl =
+    document.getElementById(
+      'sa-brgy-inactive'
+    );
+
+  const suspendedEl =
+    document.getElementById(
+      'sa-brgy-suspended'
+    );
+
+
+  if (totalEl) {
+    totalEl.textContent = total;
+  }
+
+  if (activeEl) {
+    activeEl.textContent = active;
+  }
+
+  if (inactiveEl) {
+    inactiveEl.textContent = inactive;
+  }
+
+  if (suspendedEl) {
+    suspendedEl.textContent = suspended;
+  }
+
+
+  /*
+   * Directory table
+   */
+  const tbody =
+    document.getElementById(
+      'sa-barangays-tbody'
+    );
+
+  if (tbody) {
+
+    if (!barangays.length) {
+
+      tbody.innerHTML =
+        '<tr>' +
+          '<td colspan="5" ' +
+          'style="text-align:center;padding:24px;color:var(--text3);">' +
+          'No barangays found.' +
+          '</td>' +
+        '</tr>';
+
+    } else {
+
+      tbody.innerHTML =
+        barangays.map(function(brgy){
+
+          const statusClass =
+            brgy.status === 'Active'
+              ? 'b-green'
+              : brgy.status === 'Inactive'
+                ? 'b-gray'
+                : 'b-amber';
+
+          return (
+            '<tr>' +
+
+              '<td>' +
+                '<strong>' +
+                  escapeSaHtml(
+                    brgy.name
+                  ) +
+                '</strong>' +
+              '</td>' +
+
+              '<td>' +
+                escapeSaHtml(
+                  brgy.municipality || '—'
+                ) +
+              '</td>' +
+
+              '<td>' +
+                escapeSaHtml(
+                  brgy.admin_email || '—'
+                ) +
+              '</td>' +
+
+              '<td>' +
+                '<span class="badge ' +
+                statusClass +
+                '">' +
+                  escapeSaHtml(
+                    brgy.status
+                  ) +
+                '</span>' +
+              '</td>' +
+
+              '<td>' +
+                '<button ' +
+                  'class="btn btn-ghost btn-sm" ' +
+                  'type="button" ' +
+                  'onclick="openManageSaBarangay(' +
+                    Number(brgy.id) +
+                  ')">' +
+                  'Manage' +
+                '</button>' +
+              '</td>' +
+
+            '</tr>'
+          );
+
+        }).join('');
+    }
+  }
+
+
+  /*
+   * Refresh global context selector too.
+   */
+  const select =
+    document.getElementById(
+      'global-barangay-select'
+    );
+
+  if (select) {
+
+    const previous =
+      select.value;
+
+    select.innerHTML =
+      '<option value="">' +
+        'All Barangays' +
+      '</option>';
+
+    barangays.forEach(function(brgy){
+
+      const option =
+        document.createElement('option');
+
+      option.value =
+        String(brgy.id);
+
+      option.textContent =
+        brgy.name +
+        (
+          brgy.status !== 'Active'
+            ? ' — ' + brgy.status
+            : ''
+        );
+
+      select.appendChild(option);
+    });
+
+    if (
+      previous &&
+      barangays.some(
+        b =>
+          String(b.id) ===
+          String(previous)
+      )
+    ) {
+      select.value = previous;
+    }
+  }
+}
+
+
+async function saveSaBarangay(){
+
+  clearSaBarangayMessage();
+
+  const id =
+    Number(
+      document.getElementById(
+        'sa-brgy-id'
+      ).value || 0
+    );
+
+  const name =
+    document.getElementById(
+      'sa-brgy-name'
+    ).value.trim();
+
+  const municipality =
+    document.getElementById(
+      'sa-brgy-municipality'
+    ).value.trim();
+
+  const adminEmail =
+    document.getElementById(
+      'sa-brgy-email'
+    ).value.trim();
+
+  const status =
+    document.getElementById(
+      'sa-brgy-status'
+    ).value;
+
+
+  if (!name) {
+
+    showSaBarangayMessage(
+      'error',
+      'Barangay name is required.'
+    );
+
+    return;
+  }
+
+
+  const saveBtn =
+    document.getElementById(
+      'sa-brgy-save-btn'
+    );
+
+  if (saveBtn) {
+
+    saveBtn.disabled = true;
+
+    saveBtn.textContent =
+      id > 0
+        ? 'Saving Changes…'
+        : 'Creating Barangay…';
+  }
+
+
+  try {
+
+    /*
+     * CREATE
+     */
+    if (id <= 0) {
+
+      const response =
+        await fetch(
+          'api.php',
+          {
+            method:'POST',
+            credentials:'include',
+
+            headers:{
+              'Content-Type':
+                'application/json'
+            },
+
+            body:JSON.stringify({
+              action:
+                'create_barangay',
+
+              name:
+                name,
+
+              municipality:
+                municipality,
+
+              admin_email:
+                adminEmail,
+
+              status:
+                status
+            })
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (!response.ok || !data.ok) {
+
+        throw new Error(
+          data.error ||
+          'Could not create barangay'
+        );
+      }
+
+
+      await refreshSaBarangays();
+
+      showSaBarangayMessage(
+        'success',
+        'Barangay created successfully.'
+      );
+
+
+      setTimeout(
+        closeSaBarangayModal,
+        700
+      );
+
+    /*
+     * UPDATE
+     */
+    } else {
+
+      const existing =
+        (
+          window.SUPER_ADMIN_BARANGAYS ||
+          []
+        ).find(
+          b =>
+            Number(b.id) === id
+        );
+
+
+      const response =
+        await fetch(
+          'api.php',
+          {
+            method:'PUT',
+            credentials:'include',
+
+            headers:{
+              'Content-Type':
+                'application/json'
+            },
+
+            body:JSON.stringify({
+              action:
+                'update_barangay',
+
+              barangay_id:
+                id,
+
+              name:
+                name,
+
+              municipality:
+                municipality,
+
+              admin_email:
+                adminEmail
+            })
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (!response.ok || !data.ok) {
+
+        throw new Error(
+          data.error ||
+          'Could not update barangay'
+        );
+      }
+
+
+      /*
+       * Status has its own protected endpoint.
+       */
+      if (
+        existing &&
+        existing.status !== status
+      ) {
+
+        const statusResponse =
+          await fetch(
+            'api.php',
+            {
+              method:'PUT',
+              credentials:'include',
+
+              headers:{
+                'Content-Type':
+                  'application/json'
+              },
+
+              body:JSON.stringify({
+                action:
+                  'update_barangay_status',
+
+                barangay_id:
+                  id,
+
+                status:
+                  status
+              })
+            }
+          );
+
+
+        const statusData =
+          await statusResponse.json();
+
+
+        if (
+          !statusResponse.ok ||
+          !statusData.ok
+        ) {
+
+          throw new Error(
+            statusData.error ||
+            'Barangay information was saved, but status update failed.'
+          );
+        }
+      }
+
+
+      await refreshSaBarangays();
+
+
+      showSaBarangayMessage(
+        'success',
+        'Barangay updated successfully.'
+      );
+
+
+      setTimeout(
+        closeSaBarangayModal,
+        700
+      );
+    }
+
+  } catch(error) {
+
+    showSaBarangayMessage(
+      'error',
+      error.message ||
+      'Could not save barangay.'
+    );
+
+  } finally {
+
+    if (saveBtn) {
+
+      saveBtn.disabled = false;
+
+      saveBtn.textContent =
+        'Save Barangay';
+    }
+  }
+}
+
+
+/*
+ * Wire Add Barangay button.
+ */
+document.addEventListener(
+  'DOMContentLoaded',
+  function(){
+
+    const addBtn =
+      document.getElementById(
+        'sa-add-barangay-btn'
+      );
+
+    if (addBtn) {
+
+      addBtn.addEventListener(
+        'click',
+        openAddSaBarangay
+      );
+    }
+  }
+);
 
 /*
  * Escapes values returned by the API before
