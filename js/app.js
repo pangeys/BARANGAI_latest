@@ -268,10 +268,11 @@ async function loadFromDB() {
     notifStore =
       (data.notifications || []).map(
         n => ({
-          msg:    n.msg,
-          type:   n.type,
-          time:   n.time,
-          unread: n.isRead ? false : true,
+          msg:       n.msg,
+          type:      n.type,
+          time:      n.time,
+          createdAt: n.createdAt || null,
+          unread:    n.isRead ? false : true,
         })
       );
 
@@ -331,37 +332,52 @@ async function resolveComplaint(id) {
   if (isViewer()) return;
   const c = complaints.find(x => x.id === id);
   if (!c || c.status === 'Resolved' || c.status === 'Closed') return;
-  c.status     = 'Resolved';
-  c.sb         = 'b-green';
-  c.resolvedAt = new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-  renderAll();
+
   try {
-    await fetch(API_URL, {
-      method:  'PUT',
+    const res = await fetch(API_URL, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ action: 'update_status', id, status: 'Resolved', sb: 'b-green', resolved_at: c.resolvedAt }),
+      body: JSON.stringify({ action: 'update_status', id, status: 'Resolved', sb: 'b-green' }),
     });
-  } catch (err) { console.warn('BICTS: DB status sync failed.', err); }
-  await pushNotif('Complaint ' + id + ' (' + c.category + ') marked as Resolved.', 'success');
+    const result = await res.json();
+    if (!res.ok || !result.success) throw new Error(result.error || 'Could not resolve complaint.');
+
+    c.status = 'Resolved';
+    c.sb = 'b-green';
+    c.resolvedAt = result.changed_at || c.resolvedAt;
+    await loadComplaintStatusHistory(id, c);
+    renderAll();
+    await pushNotif('Complaint ' + id + ' (' + c.category + ') marked as Resolved.', 'success');
+  } catch (err) {
+    console.warn('BICTS: DB status sync failed.', err);
+  }
 }
 
 async function closeComplaint(id, reason) {
   if (isViewer()) return;
   const c = complaints.find(x => x.id === id);
   if (!c || c.status === 'Resolved' || c.status === 'Closed') return;
-  c.status      = 'Closed';
-  c.sb          = 'b-gray';
-  c.closeReason = reason || 'Closed';
-  c.resolvedAt  = new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-  renderAll();
+
   try {
-    await fetch(API_URL, {
-      method:  'PUT',
+    const res = await fetch(API_URL, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ action: 'close_complaint', id, reason: c.closeReason }),
+      body: JSON.stringify({ action: 'close_complaint', id, reason: reason || 'Closed' }),
     });
-  } catch (err) { console.warn('BICTS: DB close sync failed.', err); }
-  await pushNotif('Complaint ' + id + ' (' + c.category + ') closed — ' + c.closeReason + '.', 'info');
+    const result = await res.json();
+    if (!res.ok || !result.success) throw new Error(result.error || 'Could not close complaint.');
+
+    c.status = 'Closed';
+    c.sb = 'b-gray';
+    c.closeReason = reason || 'Closed';
+    c.closedAt = result.changed_at || c.closedAt;
+    c.resolvedAt = null;
+    await loadComplaintStatusHistory(id, c);
+    renderAll();
+    await pushNotif('Complaint ' + id + ' (' + c.category + ') closed — ' + c.closeReason + '.', 'info');
+  } catch (err) {
+    console.warn('BICTS: DB close sync failed.', err);
+  }
 }
 
 let _closingId = null;
@@ -387,20 +403,33 @@ async function advanceStatus(id) {
   if (!c) return;
   const idx = STATUS_FLOW.indexOf(c.status);
   if (idx >= STATUS_FLOW.length - 1) return;
-  c.status = STATUS_FLOW[idx + 1];
-  c.sb     = statusBadge(c.status);
-  if (c.status === 'Resolved') {
-    c.resolvedAt = new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-    await pushNotif('Complaint ' + id + ' (' + c.category + ') marked as Resolved.', 'success');
-  }
-  renderAll();
+
+  const nextStatus = STATUS_FLOW[idx + 1];
+  const nextBadge = statusBadge(nextStatus);
+
   try {
-    await fetch(API_URL, {
-      method:  'PUT',
+    const res = await fetch(API_URL, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ action: 'update_status', id, status: c.status, sb: c.sb, resolved_at: c.resolvedAt || '' }),
+      body: JSON.stringify({ action: 'update_status', id, status: nextStatus, sb: nextBadge }),
     });
-  } catch (err) { console.warn('BICTS: DB status sync failed.', err); }
+    const result = await res.json();
+    if (!res.ok || !result.success) throw new Error(result.error || 'Could not update complaint status.');
+
+    c.status = nextStatus;
+    c.sb = nextBadge;
+    if (nextStatus === 'Resolved') c.resolvedAt = result.changed_at || c.resolvedAt;
+    await loadComplaintStatusHistory(id, c);
+    renderAll();
+
+    if (nextStatus === 'Resolved') {
+      await pushNotif('Complaint ' + id + ' (' + c.category + ') marked as Resolved.', 'success');
+    } else {
+      await pushNotif('Complaint ' + id + ' moved to ' + nextStatus + '.', 'info');
+    }
+  } catch (err) {
+    console.warn('BICTS: DB status sync failed.', err);
+  }
 }
 
 async function pushNotif(msg, type, barangayId = 0) {
@@ -418,6 +447,7 @@ async function pushNotif(msg, type, barangayId = 0) {
     msg,
     type,
     time,
+    createdAt: new Date().toISOString(),
     unread: true
   });
 
@@ -726,10 +756,25 @@ function _escHtml(str) {
 }
 
 function _formatNoteDate(rawDate) {
+  return typeof formatBarangAIDateTime === 'function'
+    ? formatBarangAIDateTime(rawDate)
+    : (rawDate || '—');
+}
+
+async function loadComplaintStatusHistory(id, complaintObj = null) {
+  const c = complaintObj || complaints.find(x => x.id === id);
+  if (!c) return [];
   try {
-    const d = new Date(rawDate.replace(' ','T'));
-    return d.toLocaleDateString('en-PH',{month:'short',day:'numeric'}) + ' · ' + d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
-  } catch(e) { return rawDate||'—'; }
+    const res = await fetch(API_URL + '?type=status_history&complaint_id=' + encodeURIComponent(id) + '&_=' + Date.now());
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Could not load status history.');
+    c.statusHistory = Array.isArray(data.history) ? data.history : [];
+    return c.statusHistory;
+  } catch (err) {
+    console.warn('BICTS: status history unavailable.', err);
+    c.statusHistory = Array.isArray(c.statusHistory) ? c.statusHistory : [];
+    return c.statusHistory;
+  }
 }
 
 /* ══════════════════════════════════════════════════════
@@ -752,7 +797,7 @@ async function viewComplaint(id) {
   if (resolveBtn) {
     if (c.status !== 'Resolved') {
       resolveBtn.textContent = '✓ Resolve'; resolveBtn.style.color = 'var(--green)'; resolveBtn.style.borderColor = 'var(--green)';
-      resolveBtn.onclick = () => { resolveComplaint(id); viewComplaint(id); };
+      resolveBtn.onclick = async () => { await resolveComplaint(id); await viewComplaint(id); };
     } else {
       resolveBtn.textContent = '✓ Resolved'; resolveBtn.style.color = 'var(--text3)'; resolveBtn.style.borderColor = 'var(--border)';
       resolveBtn.onclick = null;
@@ -769,13 +814,16 @@ async function viewComplaint(id) {
       closeBtn.onclick = () => openCloseModal(id);
     }
   }
+  await loadComplaintStatusHistory(id, c);
+
   const fieldMap = {
-    'detail-date-filed':    c.date        || '—',
-    'detail-incident-date': (c.date||'—') + (c.time ? ' ' + c.time : ''),
-    'detail-location':      c.location    || '—',
-    'detail-affected':      c.affected    || '—',
-    'detail-complainant':   c.complainant || 'Anonymous',
-    'detail-officer':       c.officer     || '—',
+    'detail-date-filed':         formatBarangAIDateTime(c.createdAt),
+    'detail-incident-date':      formatIncidentDateTime(c.incidentDate, c.incidentTime),
+    'detail-location':           c.location    || '—',
+    'detail-affected':           c.affected    || '—',
+    'detail-complainant':        c.complainant || 'Anonymous',
+    'detail-officer':            c.officer     || '—',
+    'detail-officer-assigned':   c.officerAssignedAt ? formatBarangAIDateTime(c.officerAssignedAt) : (c.officer && c.officer !== '—' ? 'Timestamp unavailable for older record' : 'Pending assignment'),
   };
   Object.entries(fieldMap).forEach(([elId, val]) => { const el = document.getElementById(elId); if (el) el.textContent = val; });
   const descEl = document.getElementById('detail-description');
@@ -1996,9 +2044,16 @@ async function submitAssignOfficer() {
     const result = await res.json();
     if (result.success) {
       const c = complaints.find(x => x.id === _assignComplaintId);
-      if (c) { c.officer = officerName; c.officer_id = officerId; }
+      if (c) {
+        c.officer = officerName;
+        c.officer_id = officerId;
+        c.officerAssignedAt = result.assigned_at || c.officerAssignedAt;
+      }
       const detailEl = document.getElementById('detail-officer');
       if (detailEl) detailEl.textContent = officerName;
+      const assignedEl = document.getElementById('detail-officer-assigned');
+      if (assignedEl && c) assignedEl.textContent = c.officerAssignedAt ? formatBarangAIDateTime(c.officerAssignedAt) : '—';
+      if (c && typeof renderDetailTimeline === 'function') renderDetailTimeline(c);
       renderAll();
       closeModal('assignModal');
       await pushNotif('Officer "' + officerName + '" assigned to complaint ' + _assignComplaintId + '.', 'success');

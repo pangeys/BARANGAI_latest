@@ -2,6 +2,10 @@
 error_reporting(0);
 ini_set('display_errors', 0);
 
+// BarangAI operates in Philippine Standard Time.
+// Keep PHP-generated timestamps consistent with the barangay location.
+date_default_timezone_set('Asia/Manila');
+
 define('DB_HOST', 'sql113.infinityfree.com');
 define('DB_USER', 'if0_42015849');
 define('DB_PASS', 'thesisdemarizo');
@@ -21,6 +25,10 @@ function getDB() {
         die(json_encode(['error' => 'Database connection failed: ' . $conn->connect_error]));
     }
     $conn->set_charset('utf8mb4');
+
+    // Use Philippine Standard Time for NOW()/CURRENT_TIMESTAMP in this session.
+    // A numeric offset is used because shared hosts may not load MySQL timezone tables.
+    $conn->query("SET time_zone = '+08:00'");
     return $conn;
 }
 

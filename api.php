@@ -46,6 +46,38 @@ function logActivity($conn, $userId, $userName, $barangayId, $action, $detail) {
     $stmt->close();
 }
 
+/*
+ * Complaint status history is the authoritative timeline used by
+ * Resident, Admin, and Super Admin portals. Timestamps are written by
+ * the server in Philippine Standard Time rather than supplied by a browser.
+ */
+function logComplaintStatusHistory($conn, $complaintId, $barangayId, $status, $userId = null, $userName = null, $source = 'admin', $createdAt = null) {
+    $changedBy = $userId === null ? null : (int)$userId;
+    $changedName = $userName === null ? null : (string)$userName;
+
+    if ($createdAt) {
+        $stmt = $conn->prepare(
+            "INSERT INTO complaint_status_history
+                (complaint_id, barangay_id, status, changed_by, changed_by_name, source, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
+        );
+        if (!$stmt) return false;
+        $stmt->bind_param('sisisss', $complaintId, $barangayId, $status, $changedBy, $changedName, $source, $createdAt);
+    } else {
+        $stmt = $conn->prepare(
+            "INSERT INTO complaint_status_history
+                (complaint_id, barangay_id, status, changed_by, changed_by_name, source)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        );
+        if (!$stmt) return false;
+        $stmt->bind_param('sisiss', $complaintId, $barangayId, $status, $changedBy, $changedName, $source);
+    }
+
+    $ok = $stmt->execute();
+    $stmt->close();
+    return $ok;
+}
+
 $sessionUser = $_SESSION['user'] ?? null;
 
 /*
@@ -268,6 +300,50 @@ if ($method === 'PUT' && $action === 'update_barangay_status') {
     ]);
 }
 
+if ($method === 'GET' && $type === 'status_history') {
+    $complaintId = trim((string)($_GET['complaint_id'] ?? ''));
+
+    if ($complaintId === '') {
+        respond(['error' => 'complaint_id required'], 400);
+    }
+
+    if ($isSuperAdmin) {
+        $check = $conn->prepare(
+            "SELECT complaint_id FROM complaints WHERE complaint_id = ? LIMIT 1"
+        );
+        $check->bind_param('s', $complaintId);
+    } else {
+        $check = $conn->prepare(
+            "SELECT complaint_id FROM complaints
+             WHERE complaint_id = ? AND barangay_id = ? LIMIT 1"
+        );
+        $check->bind_param('si', $complaintId, $barangay_id);
+    }
+
+    $check->execute();
+    $allowed = $check->get_result()->fetch_assoc();
+    $check->close();
+
+    if (!$allowed) {
+        respond(['error' => 'Complaint not found in your authorized scope'], 404);
+    }
+
+    $stmt = $conn->prepare(
+        "SELECT status, changed_by_name, source, created_at
+         FROM complaint_status_history
+         WHERE complaint_id = ?
+         ORDER BY created_at ASC, id ASC"
+    );
+    $stmt->bind_param('s', $complaintId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $history = [];
+    while ($row = $result->fetch_assoc()) $history[] = $row;
+    $stmt->close();
+
+    respond(['history' => $history]);
+}
+
 if ($method === 'GET' && $type === 'init') {
     $complaints = [];
     if ($barangay_id !== null && $barangay_id > 0) {
@@ -283,11 +359,14 @@ if ($method === 'GET' && $type === 'init') {
     }
     while ($row = $r->fetch_assoc()) {
         $complaints[] = [
-            'id'          => $row['complaint_id'],
-            'date'        => $row['date_filed'],
-            'description' => $row['description'],
-            'location'    => $row['location'],
-            'time'        => $row['incident_time'],
+            'id'                => $row['complaint_id'],
+            'date'              => $row['date_filed'],
+            'createdAt'         => $row['created_at'] ?? null,
+            'incidentDate'      => $row['incident_date'] ?? null,
+            'incidentTime'      => $row['incident_time'] ?? null,
+            'description'       => $row['description'],
+            'location'          => $row['location'],
+            'time'              => $row['incident_time'],
             'complainant' => $row['complainant'],
             'affected'    => strval($row['affected']),
             'category'    => $row['category'],
@@ -295,12 +374,14 @@ if ($method === 'GET' && $type === 'init') {
             'score'       => $row['score'],
             'priority'    => $row['priority'],
             'pb'          => $row['priority_badge'],
-            'officer'     => $row['officer'],
-            'officer_id'  => intval($row['officer_id'] ?? 0),
-            'status'      => $row['status'],
-            'sb'          => $row['status_badge'],
-            'resolvedAt'  => $row['resolved_at'],
-            'closeReason' => $row['close_reason'] ?? '',
+            'officer'           => $row['officer'],
+            'officer_id'        => intval($row['officer_id'] ?? 0),
+            'officerAssignedAt' => $row['officer_assigned_at'] ?? null,
+            'status'            => $row['status'],
+            'sb'                => $row['status_badge'],
+            'resolvedAt'        => $row['resolved_at'],
+            'closedAt'          => $row['closed_at'] ?? null,
+            'closeReason'       => $row['close_reason'] ?? '',
             'barangay_id' => intval($row['barangay_id']),
         ];
     }
@@ -323,7 +404,13 @@ if ($method === 'GET' && $type === 'init') {
         respond(['error' => 'Invalid barangay scope'], 403);
     }
     while ($row = $r2->fetch_assoc()) {
-        $notifs[] = ['msg'=>$row['msg'],'type'=>$row['type'],'time'=>$row['time'],'isRead'=>intval($row['is_read'] ?? 0)];
+        $notifs[] = [
+            'msg'       => $row['msg'],
+            'type'      => $row['type'],
+            'time'      => $row['time'],
+            'createdAt' => $row['created_at'] ?? null,
+            'isRead'    => intval($row['is_read'] ?? 0)
+        ];
     }
     $r3     = $conn->query("SELECT next_id FROM id_counter WHERE id = 1");
     $nextId = intval($r3->fetch_assoc()['next_id'] ?? 1);
@@ -775,11 +862,15 @@ if ($method === 'POST' && $action === 'add_complaint') {
     $stmt->bind_param('sssssssisissssssi', $cid, $dateFiled, $desc, $loc, $incDate, $incTime, $comp, $affected, $cat, $conf, $score, $priority, $pb, $officer, $status, $sb, $bid);
     $ok = $stmt->execute();
     $stmt->close();
-    if ($ok) respond(["success" => true, "id" => $cid]);
-    else     respond(["success" => false, "error" => $conn->error], 500);
+    if ($ok) {
+        logComplaintStatusHistory($conn, $cid, $bid, $status, $userId, $userName, 'admin_created');
+        respond(["success" => true, "id" => $cid]);
+    }
+    else respond(["success" => false, "error" => $conn->error], 500);
 }
 
 if ($method === 'PUT' && $action === 'assign_officer') {
+    $assignedAt = date('Y-m-d H:i:s');
     $complaintId = trim((string)($body['complaint_id'] ?? ''));
     $officerId   = (int)($body['officer_id'] ?? 0);
 
@@ -839,7 +930,7 @@ if ($method === 'PUT' && $action === 'assign_officer') {
 
         $stmt = $conn->prepare(
             "UPDATE complaints
-             SET officer = ?, officer_id = ?
+             SET officer = ?, officer_id = ?, officer_assigned_at = NOW()
              WHERE complaint_id = ?
                AND barangay_id = ?"
         );
@@ -892,7 +983,7 @@ if ($method === 'PUT' && $action === 'assign_officer') {
 
         $stmt = $conn->prepare(
             "UPDATE complaints
-             SET officer = ?, officer_id = ?
+             SET officer = ?, officer_id = ?, officer_assigned_at = NOW()
              WHERE complaint_id = ?"
         );
         $stmt->bind_param(
@@ -927,7 +1018,7 @@ if ($method === 'PUT' && $action === 'assign_officer') {
         "Officer '$officerName' (ID: $officerId) assigned to complaint $complaintId"
     );
 
-    respond(['success' => true]);
+    respond(['success' => true, 'assigned_at' => $assignedAt]);
 }
 
 /*
@@ -1323,8 +1414,9 @@ if ($method === 'PUT' && $action === 'update_status') {
     $sb =
         trim((string)($body['sb'] ?? 'b-gray'));
 
-    $resolvedAt =
-        trim((string)($body['resolved_at'] ?? ''));
+    // Server-authoritative timestamp in Philippine Standard Time.
+    // Never trust a browser-provided clock for case-history evidence.
+    $resolvedAt = date('Y-m-d H:i:s');
 
 
     if ($id === '') {
@@ -1342,8 +1434,8 @@ if ($method === 'PUT' && $action === 'update_status') {
     $allowedStatuses = [
         'Open',
         'In Progress',
-        'Resolved',
-        'Closed'
+        'For Hearing',
+        'Resolved'
     ];
 
     if (!in_array($status, $allowedStatuses, true)) {
@@ -1440,7 +1532,8 @@ if ($method === 'PUT' && $action === 'update_status') {
                     "UPDATE complaints
                      SET status = ?,
                          status_badge = ?,
-                         resolved_at = ?
+                         resolved_at = ?,
+                         closed_at = NULL
                      WHERE complaint_id = ?"
                 );
 
@@ -1459,7 +1552,8 @@ if ($method === 'PUT' && $action === 'update_status') {
                     "UPDATE complaints
                      SET status = ?,
                          status_badge = ?,
-                         resolved_at = ?
+                         resolved_at = ?,
+                         closed_at = NULL
                      WHERE complaint_id = ?
                        AND barangay_id = ?"
                 );
@@ -1487,7 +1581,8 @@ if ($method === 'PUT' && $action === 'update_status') {
                     "UPDATE complaints
                      SET status = ?,
                          status_badge = ?,
-                         resolved_at = NULL
+                         resolved_at = NULL,
+                         closed_at = NULL
                      WHERE complaint_id = ?"
                 );
 
@@ -1505,7 +1600,8 @@ if ($method === 'PUT' && $action === 'update_status') {
                     "UPDATE complaints
                      SET status = ?,
                          status_badge = ?,
-                         resolved_at = NULL
+                         resolved_at = NULL,
+                         closed_at = NULL
                      WHERE complaint_id = ?
                        AND barangay_id = ?"
                 );
@@ -1552,26 +1648,36 @@ if ($method === 'PUT' && $action === 'update_status') {
     }
 
 
-    /*
-     * Only a real successful resolve gets
-     * a resolve audit event.
-     */
-    if ($status === 'Resolved') {
+    // Persist every status transition with its exact server time.
+    logComplaintStatusHistory(
+        $conn,
+        $id,
+        $targetBarangayId,
+        $status,
+        $userId,
+        $userName,
+        'admin_status_change',
+        $resolvedAt
+    );
 
-        logActivity(
-            $conn,
-            $userId,
-            $userName,
-            $targetBarangayId,
-            'complaint_resolved',
-            "Complaint $id resolved [cat:$category]"
-        );
-    }
+    $auditAction = $status === 'Resolved'
+        ? 'complaint_resolved'
+        : 'complaint_status_updated';
 
+    logActivity(
+        $conn,
+        $userId,
+        $userName,
+        $targetBarangayId,
+        $auditAction,
+        "Complaint $id status changed to '$status' [cat:$category]"
+    );
 
     respond([
         'success' => true,
-        'affected' => $affected
+        'affected' => $affected,
+        'changed_at' => $resolvedAt,
+        'status' => $status
     ]);
 }
 
@@ -1590,8 +1696,8 @@ if ($method === 'PUT' && $action === 'close_complaint') {
     $sb =
         'b-gray';
 
-    $closedAt =
-        date('h:i A');
+    // Server-authoritative close timestamp in Philippine Standard Time.
+    $closedAt = date('Y-m-d H:i:s');
 
 
     if ($id === '') {
@@ -1699,7 +1805,8 @@ if ($method === 'PUT' && $action === 'close_complaint') {
                  SET status = 'Closed',
                      status_badge = ?,
                      close_reason = ?,
-                     resolved_at = ?
+                     closed_at = ?,
+                     resolved_at = NULL
                  WHERE complaint_id = ?"
             );
 
@@ -1719,7 +1826,8 @@ if ($method === 'PUT' && $action === 'close_complaint') {
                  SET status = 'Closed',
                      status_badge = ?,
                      close_reason = ?,
-                     resolved_at = ?
+                     closed_at = ?,
+                     resolved_at = NULL
                  WHERE complaint_id = ?
                    AND barangay_id = ?"
             );
@@ -1764,6 +1872,17 @@ if ($method === 'PUT' && $action === 'close_complaint') {
     }
 
 
+    logComplaintStatusHistory(
+        $conn,
+        $id,
+        $targetBarangayId,
+        'Closed',
+        $userId,
+        $userName,
+        'admin_close',
+        $closedAt
+    );
+
     logActivity(
         $conn,
         $userId,
@@ -1776,7 +1895,9 @@ if ($method === 'PUT' && $action === 'close_complaint') {
 
     respond([
         'success' => true,
-        'affected' => $affected
+        'affected' => $affected,
+        'changed_at' => $closedAt,
+        'status' => 'Closed'
     ]);
 }
 

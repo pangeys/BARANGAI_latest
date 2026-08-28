@@ -5,6 +5,66 @@
 ═══════════════════════════════════════════════════════ */
 
 /* ══════════════════════════════════════════════════════
+   AUTHORITATIVE DATE/TIME FORMATTERS
+   All operational timestamps are displayed in Philippine Time (PHT, UTC+8).
+══════════════════════════════════════════════════════ */
+function parseBarangAIDateTime(raw) {
+  if (!raw) return null;
+  const value = String(raw).trim();
+  if (!value || value === '0000-00-00 00:00:00') return null;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+    const d = new Date(value.replace(' ', 'T') + '+08:00');
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatBarangAIDateTime(raw, includeSeconds = true) {
+  const d = parseBarangAIDateTime(raw);
+  if (!d) return '—';
+  const date = d.toLocaleDateString('en-PH', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric'
+  });
+  const opts = {
+    timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: true
+  };
+  if (includeSeconds) opts.second = '2-digit';
+  const time = d.toLocaleTimeString('en-PH', opts);
+  return date + ' · ' + time + ' PHT';
+}
+
+function formatIncidentDateTime(dateRaw, timeRaw) {
+  if (!dateRaw) return 'Not provided';
+  let dateText = String(dateRaw);
+  try {
+    const d = new Date(String(dateRaw) + 'T00:00:00+08:00');
+    if (!Number.isNaN(d.getTime())) {
+      dateText = d.toLocaleDateString('en-PH', {
+        timeZone:'Asia/Manila', year:'numeric', month:'short', day:'numeric'
+      });
+    }
+  } catch (e) {}
+  if (!timeRaw) return dateText + ' · Time not provided';
+  const hhmm = String(timeRaw).slice(0,5);
+  const t = new Date('2000-01-01T' + hhmm + ':00+08:00');
+  const timeText = Number.isNaN(t.getTime()) ? String(timeRaw) : t.toLocaleTimeString('en-PH', {
+    timeZone:'Asia/Manila', hour:'2-digit', minute:'2-digit', hour12:true
+  });
+  return dateText + ' · ' + timeText;
+}
+
+function getStatusHistoryTime(complaint, status) {
+  if (status === 'Open' && complaint.createdAt) return complaint.createdAt;
+  const history = Array.isArray(complaint.statusHistory) ? complaint.statusHistory : [];
+  const event = history.find(h => h.status === status);
+  if (event && event.created_at) return event.created_at;
+  if (status === 'Resolved') return complaint.resolvedAt || null;
+  if (status === 'Closed') return complaint.closedAt || null;
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════
    DASHBOARD
 ══════════════════════════════════════════════════════ */
 function renderAccuracyBars() {
@@ -101,6 +161,7 @@ function renderDashboardStats() {
       : '<span style="font-size:11px;color:' + (c.status === 'Closed' ? 'var(--text3)' : 'var(--green)') + ';font-weight:600;">' + (c.status === 'Closed' ? '⊘ Closed' : '✓ Resolved') + '</span>';
     return '<tr>' +
       '<td class="mono">' + c.id + '</td>' +
+      '<td class="exact-time-cell">' + formatBarangAIDateTime(c.createdAt) + '</td>' +
       '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + mask(c.description) + '</td>' +
       '<td><span class="badge b-blue">' + c.category + '</span></td>' +
       '<td><span class="badge ' + c.pb + '">' + c.priority + '</span></td>' +
@@ -108,7 +169,7 @@ function renderDashboardStats() {
       '<td>' + btn + '</td></tr>';
   }).join('');
   recentBox.innerHTML =
-    '<table class="tbl"><thead><tr><th>ID</th><th>Description</th><th>Category</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
+    '<table class="tbl"><thead><tr><th>ID</th><th>Filed Date & Time</th><th>Description</th><th>Category</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
 /* ══════════════════════════════════════════════════════
@@ -145,7 +206,7 @@ function renderComplaints() {
       : '<span style="font-size:11px;color:' + (c.status === 'Closed' ? 'var(--text3)' : 'var(--green)') + ';font-weight:600;">' + (c.status === 'Closed' ? '⊘ Closed' : '✓ Resolved') + '</span>';
     return '<tr>' +
       '<td class="mono">' + c.id + '</td>' +
-      '<td style="font-size:10px;color:var(--text3)">' + c.date + '</td>' +
+      '<td class="exact-time-cell">' + formatBarangAIDateTime(c.createdAt) + '</td>' +
       '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + mask(c.description) + '</td>' +
       '<td><span class="badge b-blue">' + c.category + '</span></td>' +
       '<td><span class="badge ' + c.pb + '" style="font-family:var(--mono)">' + c.score + ' – ' + c.priority + '</span></td>' +
@@ -218,9 +279,9 @@ function renderKanban() {
             if (nextLabel) actions += '<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px;" onclick="advanceStatus(\'' + c.id + '\')">→ ' + nextLabel + '</button>';
             actions = '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">' + actions + '</div>';
           } else if (col.status === 'Closed') {
-            actions = '<div style="margin-top:6px;font-size:10px;color:var(--text3);">⊘ Closed' + (c.closeReason ? ' · ' + c.closeReason : '') + '</div>';
+            actions = '<div style="margin-top:6px;font-size:10px;color:var(--text3);">⊘ Closed' + (c.closedAt ? ' · ' + formatBarangAIDateTime(c.closedAt, false) : '') + (c.closeReason ? '<br>' + c.closeReason : '') + '</div>';
           } else {
-            actions = '<div style="margin-top:6px;font-size:10px;color:var(--green);">✓ Resolved' + (c.resolvedAt ? ' · ' + c.resolvedAt : '') + '</div>';
+            actions = '<div style="margin-top:6px;font-size:10px;color:var(--green);">✓ Resolved' + (c.resolvedAt ? ' · ' + formatBarangAIDateTime(c.resolvedAt, false) : '') + '</div>';
           }
           return '<div class="kanban-card" style="border-left:3px solid ' + col.color + ';">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
@@ -229,7 +290,7 @@ function renderKanban() {
             '</div><div class="kanban-desc">' + shortDesc + '</div>' +
             '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
             '<span class="badge b-blue" style="font-size:9px;">' + c.category + '</span>' +
-            '<span style="font-size:9px;color:var(--text3);margin-left:auto;">' + c.date + '</span>' +
+            '<span style="font-size:9px;color:var(--text3);margin-left:auto;text-align:right;">Filed<br>' + formatBarangAIDateTime(c.createdAt, false) + '</span>' +
             '</div>' + actions + '</div>';
         }).join('');
 
@@ -343,10 +404,13 @@ function renderWeeklyBars() {
 
   // Count real complaints filed this month, by day-of-month
   complaints.forEach(c => {
-    const parsed = new Date((c.date || '') + ' ' + year);
-    if (isNaN(parsed)) return;
-    if (parsed.getMonth() !== month) return;
-    const dom = parsed.getDate();
+    const parsed = parseBarangAIDateTime(c.createdAt) || (c.date ? new Date(c.date + 'T00:00:00+08:00') : null);
+    if (!parsed || Number.isNaN(parsed.getTime())) return;
+    const phtParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone:'Asia/Manila', year:'numeric', month:'2-digit', day:'2-digit'
+    }).formatToParts(parsed).reduce((acc, part) => { acc[part.type] = part.value; return acc; }, {});
+    if (Number(phtParts.month) - 1 !== month || Number(phtParts.year) !== year) return;
+    const dom = Number(phtParts.day);
     const w = weeks.find(x => dom >= x.start && dom <= x.end);
     if (w) w.count++;
   });
@@ -410,7 +474,7 @@ function renderNotifs() {
   el.innerHTML = notifStore.map(n =>
     '<div class="notif-item">' +
     '<div class="notif-ico">' + (n.type === 'success' ? '✅' : '📋') + '</div>' +
-    '<div style="flex:1;"><div class="notif-txt">' + n.msg + '</div><div class="notif-time">' + n.time + '</div></div>' +
+    '<div style="flex:1;"><div class="notif-txt">' + n.msg + '</div><div class="notif-time">' + (n.createdAt ? formatBarangAIDateTime(n.createdAt) : n.time) + '</div></div>' +
     (n.unread !== false ? '<div class="notif-dot2"></div>' : '') +
     '</div>'
   ).join('');
@@ -512,19 +576,53 @@ function renderDetailAhp(complaint) {
 function renderDetailTimeline(complaint) {
   const el = document.getElementById('detail-timeline');
   if (!el) return;
-  const events = [
-    { dot: 'done', label: 'Complaint Filed',    meta: complaint.date + (complaint.time ? ' · ' + complaint.time : '') },
-    { dot: 'done', label: 'AI Classification',  meta: complaint.category + ' · ' + (complaint.confidence || '—') + '% relative SVM score' },
-    { dot: complaint.status !== 'Open' ? 'done' : 'pend', label: 'Officer Assigned',
-      meta: complaint.officer !== '—' ? complaint.officer : 'Pending assignment' },
-    { dot: complaint.status === 'Resolved' ? 'done' : 'pend', label: 'Case Resolved',
-      meta: complaint.resolvedAt ? 'Resolved at ' + complaint.resolvedAt : 'Pending resolution' },
-  ];
-  el.innerHTML = '<ul class="tl">' + events.map(e =>
-    '<li><div class="tl-dot ' + e.dot + '"></div>' +
-    '<div><div class="tl-act">' + e.label + '</div>' +
-    '<div class="tl-meta">' + e.meta + '</div></div></li>'
-  ).join('') + '</ul>';
+
+  const events = [];
+  const filedAt = complaint.createdAt;
+  events.push({
+    dot: 'done',
+    label: 'Complaint Filed',
+    meta: formatBarangAIDateTime(filedAt),
+    detail: 'Official server filing timestamp'
+  });
+  events.push({
+    dot: 'done',
+    label: 'AI Classification & Priority Computation',
+    meta: formatBarangAIDateTime(filedAt),
+    detail: complaint.category + ' · ' + (complaint.confidence || '—') + '% relative SVM score · ' + complaint.priority + ' priority'
+  });
+
+  if (complaint.officer && complaint.officer !== '—') {
+    events.push({
+      dot: complaint.officerAssignedAt ? 'done' : 'pend',
+      label: 'Officer Assigned',
+      meta: complaint.officerAssignedAt ? formatBarangAIDateTime(complaint.officerAssignedAt) : 'Timestamp unavailable for older record',
+      detail: complaint.officer
+    });
+  } else {
+    events.push({ dot:'pend', label:'Officer Assignment', meta:'Pending', detail:'No officer assigned yet' });
+  }
+
+  ['Open','In Progress','For Hearing','Resolved','Closed'].forEach(status => {
+    const stamp = getStatusHistoryTime(complaint, status);
+    const isCurrent = complaint.status === status;
+    const reached = !!stamp;
+    if (!reached && !isCurrent) return;
+    events.push({
+      dot: reached ? 'done' : 'pend',
+      label: 'Status: ' + status,
+      meta: reached ? formatBarangAIDateTime(stamp) : 'Timestamp unavailable for older record',
+      detail: isCurrent ? 'Current complaint status' : 'Recorded case progress'
+    });
+  });
+
+  el.innerHTML = '<div class="timeline-zone-note">All system timestamps are shown in Philippine Time (PHT, UTC+8).</div>' +
+    '<ul class="tl precise-timeline">' + events.map(e =>
+      '<li><div class="tl-dot ' + e.dot + '"></div>' +
+      '<div><div class="tl-act">' + e.label + '</div>' +
+      '<div class="tl-meta exact-timeline-time">' + e.meta + '</div>' +
+      '<div class="tl-meta">' + e.detail + '</div></div></li>'
+    ).join('') + '</ul>';
 }
 
 /* ── Case notes placeholder ── */

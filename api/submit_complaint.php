@@ -129,10 +129,10 @@ if ($action === 'runtime_settings') {
 if ($action === 'my_complaints') {
     $uid = (int)$user['id'];
     $stmt = $db->prepare(
-        "SELECT complaint_id, date_filed, description, location,
+        "SELECT complaint_id, date_filed, created_at, description, location,
                 incident_date, incident_time, category, confidence,
-                priority, priority_badge, officer, status, status_badge,
-                resolved_at, close_reason
+                priority, priority_badge, officer, officer_assigned_at,
+                status, status_badge, resolved_at, closed_at, close_reason
            FROM complaints
           WHERE submitted_by = ?
           ORDER BY created_at DESC"
@@ -141,8 +141,37 @@ if ($action === 'my_complaints') {
     $stmt->execute();
     $res  = $stmt->get_result();
     $list = [];
-    while ($row = $res->fetch_assoc()) $list[] = $row;
+    while ($row = $res->fetch_assoc()) {
+        $row['status_history'] = [];
+        $list[] = $row;
+    }
     $stmt->close();
+
+    // Load the exact status timestamps for only this resident's own complaints.
+    $historyStmt = $db->prepare(
+        "SELECT h.complaint_id, h.status, h.changed_by_name, h.source, h.created_at
+           FROM complaint_status_history h
+           INNER JOIN complaints c ON c.complaint_id = h.complaint_id
+          WHERE c.submitted_by = ?
+          ORDER BY h.created_at ASC, h.id ASC"
+    );
+    $historyStmt->bind_param('i', $uid);
+    $historyStmt->execute();
+    $historyRes = $historyStmt->get_result();
+    $historyMap = [];
+    while ($h = $historyRes->fetch_assoc()) {
+        $cid = (string)$h['complaint_id'];
+        if (!isset($historyMap[$cid])) $historyMap[$cid] = [];
+        $historyMap[$cid][] = $h;
+    }
+    $historyStmt->close();
+
+    foreach ($list as &$complaintRow) {
+        $cid = (string)$complaintRow['complaint_id'];
+        $complaintRow['status_history'] = $historyMap[$cid] ?? [];
+    }
+    unset($complaintRow);
+
     $db->close();
     out(true, ['complaints' => $list]);
 }
@@ -279,8 +308,30 @@ $stmt->bind_param(
 );
 
 if ($stmt->execute()) {
-    $stmt->close(); $db->close();
-    out(true, ['complaint_no' => $complaint_id]);
+    $stmt->close();
+
+    // Initial Open event: server timestamp is the official filed/progress time.
+    $historyStmt = $db->prepare(
+        "INSERT INTO complaint_status_history
+            (complaint_id, barangay_id, status, changed_by, changed_by_name, source)
+         VALUES (?, ?, 'Open', ?, ?, 'resident_submission')"
+    );
+    if ($historyStmt) {
+        $residentName = (string)($user['name'] ?? 'Resident');
+        $historyStmt->bind_param('siis', $complaint_id, $barangay_id, $uid, $residentName);
+        $historyStmt->execute();
+        $historyStmt->close();
+    }
+
+    // Return the authoritative filed time for immediate UI display if needed.
+    $timeStmt = $db->prepare('SELECT created_at FROM complaints WHERE complaint_id = ? LIMIT 1');
+    $timeStmt->bind_param('s', $complaint_id);
+    $timeStmt->execute();
+    $createdAt = $timeStmt->get_result()->fetch_assoc()['created_at'] ?? null;
+    $timeStmt->close();
+
+    $db->close();
+    out(true, ['complaint_no' => $complaint_id, 'created_at' => $createdAt]);
 } else {
     $err = $stmt->error;
     $stmt->close(); $db->close();

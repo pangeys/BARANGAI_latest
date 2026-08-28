@@ -1560,3 +1560,40 @@ body.resident-page .rc-card { border-radius:15px;padding:18px 20px;background:rg
   body.super-admin-mode .portal-stats .stat-card:hover { transform:translateY(-3px); }
   body.resident-page .resident-benefit:hover { transform:translateY(-2px);box-shadow:0 10px 22px rgba(32,100,145,.08); }
 }
+
+/* ═══════════════════════════════════════════════════════
+   PRECISE COMPLAINT DATE/TIME UI — PHT (UTC+8)
+═══════════════════════════════════════════════════════ */
+.exact-time-cell {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.timeline-zone-note {
+  padding: 9px 11px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  background: var(--sky-light);
+  border: 1px solid rgba(49, 116, 199, .18);
+  color: var(--text2);
+  font-size: 10px;
+  font-weight: 600;
+}
+.precise-timeline .tl-act {
+  font-weight: 700;
+}
+.exact-timeline-time {
+  color: var(--blue) !important;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+}
+.super-admin-mode .timeline-zone-note {
+  background: rgba(111, 82, 255, .10);
+  border-color: rgba(139, 111, 255, .22);
+}
+.super-admin-mode .exact-timeline-time {
+  color: #9d8cff !important;
+}

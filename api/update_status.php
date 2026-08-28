@@ -143,6 +143,21 @@ function logStatusActivity(
 }
 
 
+function logComplaintStatusHistory($db, $complaintId, $barangayId, $status, $user) {
+    $uid = (int)($user['id'] ?? 0);
+    $name = (string)($user['name'] ?? 'Unknown');
+    $source = 'protected_status_endpoint';
+    $stmt = $db->prepare(
+        'INSERT INTO complaint_status_history
+            (complaint_id, barangay_id, status, changed_by, changed_by_name, source)
+         VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    if (!$stmt) return;
+    $stmt->bind_param('sisiss', $complaintId, $barangayId, $status, $uid, $name, $source);
+    $stmt->execute();
+    $stmt->close();
+}
+
 /*
  * Authentication first.
  */
@@ -203,8 +218,7 @@ $allowedStatuses = [
     'Open',
     'In Progress',
     'For Hearing',
-    'Resolved',
-    'Closed'
+    'Resolved'
 ];
 
 if (
@@ -221,39 +235,9 @@ if (
 
 
 /*
- * resolved_at is used only when the
- * resulting status is Resolved.
+ * Server-authoritative Philippine timestamp. Browser time is ignored.
  */
-$resolvedAt = null;
-
-if ($status === 'Resolved') {
-
-    if (!empty($body['resolved_at'])) {
-
-        $timestamp =
-            strtotime(
-                (string)$body['resolved_at']
-            );
-
-        if ($timestamp === false) {
-            respond([
-                'error' =>
-                    'Invalid resolved_at value'
-            ], 422);
-        }
-
-        $resolvedAt =
-            date(
-                'Y-m-d H:i:s',
-                $timestamp
-            );
-
-    } else {
-
-        $resolvedAt =
-            date('Y-m-d H:i:s');
-    }
-}
+$resolvedAt = $status === 'Resolved' ? date('Y-m-d H:i:s') : null;
 
 
 /*
@@ -373,7 +357,8 @@ if ($status === 'Resolved') {
         'UPDATE complaints
             SET status = ?,
                 status_badge = ?,
-                resolved_at = ?
+                resolved_at = ?,
+                closed_at = NULL
           WHERE complaint_id = ?'
     );
 
@@ -391,7 +376,8 @@ if ($status === 'Resolved') {
         'UPDATE complaints
             SET status = ?,
                 status_badge = ?,
-                resolved_at = NULL
+                resolved_at = NULL,
+                closed_at = NULL
           WHERE complaint_id = ?'
     );
 
@@ -437,12 +423,20 @@ logStatusActivity(
     $status
 );
 
+logComplaintStatusHistory(
+    $db,
+    $complaintId,
+    $targetBarangayId,
+    $status,
+    $user
+);
 
+$changedAt = date('Y-m-d H:i:s');
 $db->close();
-
 
 respond([
     'success' => true,
     'changed' => true,
-    'status'  => $status
+    'status'  => $status,
+    'changed_at' => $status === 'Resolved' ? $resolvedAt : $changedAt
 ]);

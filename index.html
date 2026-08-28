@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BarangAI – Barangay Intelligent Case Tracking System</title>
-<link rel="stylesheet" href="styles.css?v=20260828-portals2">
-<link rel="stylesheet" href="mobile-responsive.css?v=20260828-portals2">   <!-- ADD THIS LINE -->
+<link rel="stylesheet" href="styles.css?v=20260828-timeline1">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260828-timeline1">   <!-- ADD THIS LINE -->
 </head>
 <body>
 
@@ -472,7 +472,7 @@
     <div class="card-body np">
       <table class="tbl">
         <thead>
-          <tr><th>ID</th><th>Date</th><th>Description</th><th>Category</th><th>Priority Score</th><th>Officer</th><th>Status</th><th></th><th></th></tr>
+          <tr><th>ID</th><th>Filed Date &amp; Time (PHT)</th><th>Description</th><th>Category</th><th>Priority Score</th><th>Officer</th><th>Status</th><th></th><th></th></tr>
         </thead>
         <tbody id="complaints-tbody"></tbody>
       </table>
@@ -508,12 +508,13 @@
         <div class="card-header"><div class="card-title">Complaint Details</div></div>
         <div class="card-body">
           <div class="detail-grid" style="margin-bottom:16px;">
-            <div class="detail-item"><div class="dl">Date Filed</div><div class="dv" id="detail-date-filed">—</div></div>
+            <div class="detail-item"><div class="dl">Filed Date &amp; Time (PHT)</div><div class="dv" id="detail-date-filed">—</div></div>
             <div class="detail-item"><div class="dl">Incident Date &amp; Time</div><div class="dv" id="detail-incident-date">—</div></div>
             <div class="detail-item"><div class="dl">Location</div><div class="dv" id="detail-location">—</div></div>
             <div class="detail-item"><div class="dl">Affected Persons</div><div class="dv" id="detail-affected">—</div></div>
             <div class="detail-item"><div class="dl">Complainant</div><div class="dv" id="detail-complainant">Anonymous</div></div>
             <div class="detail-item"><div class="dl">Assigned Officer</div><div class="dv" id="detail-officer">—</div></div>
+            <div class="detail-item"><div class="dl">Officer Assigned At (PHT)</div><div class="dv" id="detail-officer-assigned">—</div></div>
           </div>
           <hr class="divider">
           <div class="dl" style="margin-bottom:8px;">Description</div>
@@ -555,7 +556,7 @@
         </div>
       </div>
       <div class="card">
-        <div class="card-header"><div class="card-title">Case Timeline</div></div>
+        <div class="card-header"><div class="card-title">Case Timeline</div><div style="margin-left:auto;font-size:10px;color:var(--text3);">Exact server timestamps · PHT (UTC+8)</div></div>
         <div class="card-body" id="detail-timeline">
           <div class="empty-state" style="padding:24px 0;">
             <div class="empty-icon">📅</div>
@@ -1993,8 +1994,8 @@
 <script src="js/classifier.js?v=20260814-split2"></script>
 <script src="js/dataset.js"></script>
 <script src="js/password-rules.js"></script>
-<script src="js/render.js?v=20260815-reports1"></script>
-<script src="js/app.js?v=20260815-settings5"></script>
+<script src="js/render.js?v=20260828-timeline1"></script>
+<script src="js/app.js?v=20260828-timeline1"></script>
 <script src="js/mobile.js"></script>
 
 <script>

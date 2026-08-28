@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BarangAI – Resident Portal</title>
-<link rel="stylesheet" href="styles.css?v=20260828-portals2">
-<link rel="stylesheet" href="mobile-responsive.css?v=20260828-portals2"> 
+<link rel="stylesheet" href="styles.css?v=20260828-timeline1">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260828-timeline1"> 
 
 <style>
   html { background: var(--bg, #f4f6fa); }
@@ -130,6 +130,16 @@
   .rc-desc { font-size: 13px; color: var(--text2, #4a6080); line-height: 1.6; margin-bottom: 12px; }
   .rc-meta { font-size: 11px; color: var(--text3, #9aa3af); margin-bottom: 14px; }
   .rc-meta b { color: var(--text2, #4a6080); }
+  .rc-timebox {
+    display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0 16px;
+  }
+  .rc-timeitem {
+    background:linear-gradient(135deg, rgba(232,244,255,.78), rgba(240,252,249,.78));
+    border:1px solid rgba(85,145,205,.18); border-radius:10px; padding:10px 12px;
+  }
+  .rc-time-label { font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text3,#8292aa); margin-bottom:3px; }
+  .rc-time-value { font-size:11px; font-weight:700; color:var(--text2,#425b7d); line-height:1.45; }
+  .rc-time-zone { font-size:9px; color:var(--text3,#8796aa); margin-top:2px; }
 
   /* progress steps */
   .rc-steps { display: flex; align-items: center; }
@@ -143,13 +153,23 @@
   .rc-step.done .rc-step-dot { background: var(--green, #38a169); color: #fff; }
   .rc-step.cur  .rc-step-dot { background: var(--blue, #2f6fed); color: #fff; }
   .rc-step.closed .rc-step-dot { background: #8A9BB0; color: #fff; }
-  .rc-step-lbl { font-size: 9.5px; color: var(--text3, #9aa3af); font-weight: 600; }
+  .rc-step-lbl { font-size: 9.5px; color: var(--text3, #9aa3af); font-weight: 700; }
   .rc-step.done .rc-step-lbl, .rc-step.cur .rc-step-lbl { color: var(--text2, #4a6080); }
-  .rc-line { flex: 0 0 auto; height: 2px; width: 18px; background: var(--border, #e5e8ed); margin-bottom: 18px; }
+  .rc-step-time { font-size:8.5px; line-height:1.35; color:var(--text3,#8796aa); margin-top:4px; min-height:24px; }
+  .rc-step-time strong { display:block; color:var(--text2,#4a6080); font-weight:700; }
+  .rc-line { flex: 0 0 auto; height: 2px; width: 18px; background: var(--border, #e5e8ed); margin-bottom: 42px; }
   .rc-line.done { background: var(--green, #38a169); }
 
   .rc-empty { text-align: center; padding: 50px 20px; color: var(--text3, #9aa3af); }
   .rc-empty-icon { font-size: 44px; margin-bottom: 12px; }
+  @media (max-width:700px){
+    .rc-timebox{grid-template-columns:1fr;}
+    .rc-steps{display:grid;grid-template-columns:1fr;gap:10px;align-items:start;}
+    .rc-line{display:none;}
+    .rc-step{text-align:left;display:grid;grid-template-columns:30px 1fr;column-gap:8px;align-items:start;}
+    .rc-step-dot{grid-row:1 / span 2;margin:0;}
+    .rc-step-time{min-height:0;margin-top:2px;}
+  }
 </style>
 </head>
 <body class="resident-page">
@@ -498,52 +518,138 @@ async function loadMyComplaints(){
 }
 
 /* ── render one complaint card with progress ── */
+function parseBarangAIDateTime(raw){
+  if (!raw) return null;
+  const value = String(raw).trim();
+  if (!value || value === '0000-00-00 00:00:00') return null;
+
+  // MySQL DATETIME/TIMESTAMP values are stored/displayed as Philippine wall time.
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+    const d = new Date(value.replace(' ', 'T') + '+08:00');
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatBarangAIDateTime(raw){
+  const d = parseBarangAIDateTime(raw);
+  if (!d) return '';
+  const date = d.toLocaleDateString('en-PH', {
+    timeZone:'Asia/Manila', year:'numeric', month:'short', day:'numeric'
+  });
+  const time = d.toLocaleTimeString('en-PH', {
+    timeZone:'Asia/Manila', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true
+  });
+  return date + ' · ' + time;
+}
+
+function formatIncidentDateTime(dateRaw, timeRaw){
+  if (!dateRaw) return 'Not provided';
+  let dateText = String(dateRaw);
+  try {
+    const d = new Date(String(dateRaw) + 'T00:00:00+08:00');
+    if (!Number.isNaN(d.getTime())) {
+      dateText = d.toLocaleDateString('en-PH', {
+        timeZone:'Asia/Manila', year:'numeric', month:'short', day:'numeric'
+      });
+    }
+  } catch(e) {}
+  if (!timeRaw) return dateText + ' · Time not provided';
+  const t = String(timeRaw).slice(0,5);
+  const parts = t.split(':');
+  if (parts.length === 2) {
+    const temp = new Date('2000-01-01T' + t + ':00+08:00');
+    const timeText = temp.toLocaleTimeString('en-PH', {
+      timeZone:'Asia/Manila', hour:'2-digit', minute:'2-digit', hour12:true
+    });
+    return dateText + ' · ' + timeText;
+  }
+  return dateText + ' · ' + String(timeRaw);
+}
+
+function statusTimestamp(c, status){
+  if (status === 'Open' && c.created_at) return c.created_at;
+  const history = Array.isArray(c.status_history) ? c.status_history : [];
+  const event = history.find(h => h.status === status);
+  if (event && event.created_at) return event.created_at;
+  if (status === 'Resolved') return c.resolved_at || null;
+  if (status === 'Closed') return c.closed_at || null;
+  return null;
+}
+
+/* ── render one complaint card with exact progress timestamps ── */
 function renderComplaintCard(c){
   const STAGES = ['Open', 'In Progress', 'For Hearing', 'Resolved'];
   const isClosed = c.status === 'Closed';
-  const curIdx   = STAGES.indexOf(c.status);
+  const curIdx = STAGES.indexOf(c.status);
+  const history = Array.isArray(c.status_history) ? c.status_history : [];
 
-  // build the progress steps
   let steps = '';
   STAGES.forEach((stage, i) => {
+    const stamp = statusTimestamp(c, stage);
+    const reachedByHistory = !!stamp;
     let cls = '';
-    if (isClosed) {
-      cls = 'done'; // closed: show prior path as done, closed shown separately
-    } else if (i < curIdx)  cls = 'done';
-    else if (i === curIdx)  cls = 'cur';
-    const mark = (cls === 'done') ? '✓' : (i + 1);
-    if (i > 0) steps += '<div class="rc-line ' + ((i <= curIdx || isClosed) ? 'done' : '') + '"></div>';
+
+    if (reachedByHistory || (!isClosed && i < curIdx)) cls = 'done';
+    if (!isClosed && i === curIdx) cls = 'cur';
+
+    const mark = cls === 'done' ? '✓' : (i + 1);
+    const timeHtml = stamp
+      ? '<div class="rc-step-time"><strong>' + esc(formatBarangAIDateTime(stamp)) + '</strong>PHT (UTC+8)</div>'
+      : ((cls === 'done' || cls === 'cur')
+          ? '<div class="rc-step-time">Timestamp unavailable<br>for older record</div>'
+          : '<div class="rc-step-time">Pending</div>');
+
+    if (i > 0) {
+      const prevReached = !!statusTimestamp(c, STAGES[i-1]);
+      steps += '<div class="rc-line ' + ((prevReached && (reachedByHistory || i <= curIdx)) ? 'done' : '') + '"></div>';
+    }
     steps += '<div class="rc-step ' + cls + '">' +
                '<div class="rc-step-dot">' + mark + '</div>' +
                '<div class="rc-step-lbl">' + stage + '</div>' +
+               timeHtml +
              '</div>';
   });
 
-  // closed banner replaces the timeline meaning
+  const closedStamp = statusTimestamp(c, 'Closed');
   const statusLine = isClosed
-    ? '<div style="margin-top:6px;font-size:12px;color:#8A9BB0;font-weight:600;">⊘ This case was closed' +
-        (c.close_reason ? ' — ' + esc(c.close_reason) : '') + '</div>'
+    ? '<div style="margin-top:12px;padding:10px 12px;border-radius:9px;background:#f4f6f8;font-size:11px;color:#6f7d8f;font-weight:600;">' +
+        '⊘ Closed' + (closedStamp ? ' on <b>' + esc(formatBarangAIDateTime(closedStamp)) + ' PHT</b>' : ' · exact legacy timestamp unavailable') +
+        (c.close_reason ? '<br>Reason: ' + esc(c.close_reason) : '') + '</div>'
     : '';
 
   const officer = (c.officer && c.officer !== '—')
     ? esc(c.officer)
     : '<span style="color:var(--text3,#9aa3af)">Not yet assigned</span>';
 
+  const officerAssigned = c.officer_assigned_at
+    ? ' · Assigned <b>' + esc(formatBarangAIDateTime(c.officer_assigned_at)) + ' PHT</b>'
+    : '';
+
   const badgeCls = c.status_badge || 'b-gray';
-  const shortDesc = (c.description || '').length > 140
-    ? esc(c.description.slice(0, 140)) + '…' : esc(c.description || '');
+  const shortDesc = (c.description || '').length > 180
+    ? esc(c.description.slice(0, 180)) + '…' : esc(c.description || '');
+  const filed = formatBarangAIDateTime(c.created_at) || esc(c.date_filed || '');
+  const incident = formatIncidentDateTime(c.incident_date, c.incident_time);
 
   return '<div class="rc-card">' +
     '<div class="rc-top">' +
       '<span class="rc-id">' + esc(c.complaint_id) + '</span>' +
       '<span class="badge b-blue" style="font-size:10px;">' + esc(c.category || 'Unclassified') + '</span>' +
       '<span class="badge ' + badgeCls + '" style="font-size:10px;">' + esc(c.status) + '</span>' +
-      '<span class="rc-date">' + esc(c.date_filed || '') + '</span>' +
+      '<span class="rc-date">Filed: ' + esc(filed) + ' PHT</span>' +
     '</div>' +
     '<div class="rc-desc">' + shortDesc + '</div>' +
-    '<div class="rc-meta">Assigned officer: <b>' + officer + '</b>' +
+    '<div class="rc-timebox">' +
+      '<div class="rc-timeitem"><div class="rc-time-label">Official Filing Timestamp</div><div class="rc-time-value">' + esc(filed) + '</div><div class="rc-time-zone">Philippine Time (PHT, UTC+8)</div></div>' +
+      '<div class="rc-timeitem"><div class="rc-time-label">Incident Date & Time</div><div class="rc-time-value">' + esc(incident) + '</div><div class="rc-time-zone">As reported by the resident</div></div>' +
+    '</div>' +
+    '<div class="rc-meta">Assigned officer: <b>' + officer + '</b>' + officerAssigned +
       (c.priority ? ' &nbsp;·&nbsp; Priority: <b>' + esc(c.priority) + '</b>' : '') + '</div>' +
-    (isClosed ? statusLine : '<div class="rc-steps">' + steps + '</div>') +
+    '<div class="rc-steps">' + steps + '</div>' +
+    statusLine +
   '</div>';
 }
 
