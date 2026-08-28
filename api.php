@@ -7,6 +7,10 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 require_once __DIR__ . '/api/config.php';
 
 header("Content-Type: application/json; charset=utf-8");
+// Dynamic dashboard data must never be served from a stale browser/proxy cache.
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
@@ -289,6 +293,71 @@ if ($method === 'PUT' && $action === 'update_barangay_status') {
         'changed' => true,
         'barangay_id' => $targetBarangayId,
         'status' => $status
+    ]);
+}
+
+/*
+ * GET ?type=sync_stamp
+ *
+ * Lightweight live-sync probe for the administrator dashboard.  The front end
+ * checks this small response every few seconds and only reloads the full
+ * complaint payload when something actually changed.  This gives near-real-
+ * time updates without repeatedly downloading the entire dashboard dataset on
+ * shared/free hosting.
+ */
+if ($method === 'GET' && $type === 'sync_stamp') {
+    $maxComplaintId = 0;
+    $maxActivityId = 0;
+    $maxNotificationId = 0;
+    $maxStatusHistoryId = 0;
+
+    if ($isSuperAdmin) {
+        $row = $conn->query("SELECT COALESCE(MAX(id), 0) AS v FROM complaints")->fetch_assoc();
+        $maxComplaintId = (int)($row['v'] ?? 0);
+
+        $row = $conn->query("SELECT COALESCE(MAX(id), 0) AS v FROM activity_log")->fetch_assoc();
+        $maxActivityId = (int)($row['v'] ?? 0);
+
+        $row = $conn->query("SELECT COALESCE(MAX(id), 0) AS v FROM notifications")->fetch_assoc();
+        $maxNotificationId = (int)($row['v'] ?? 0);
+
+        $row = $conn->query("SELECT COALESCE(MAX(id), 0) AS v FROM complaint_status_history")->fetch_assoc();
+        $maxStatusHistoryId = (int)($row['v'] ?? 0);
+    } else {
+        $stmt = $conn->prepare("SELECT COALESCE(MAX(id), 0) AS v FROM complaints WHERE barangay_id = ?");
+        $stmt->bind_param('i', $barangay_id);
+        $stmt->execute();
+        $maxComplaintId = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
+        $stmt->close();
+
+        $stmt = $conn->prepare("SELECT COALESCE(MAX(id), 0) AS v FROM activity_log WHERE barangay_id = ?");
+        $stmt->bind_param('i', $barangay_id);
+        $stmt->execute();
+        $maxActivityId = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
+        $stmt->close();
+
+        $stmt = $conn->prepare("SELECT COALESCE(MAX(id), 0) AS v FROM notifications WHERE barangay_id = ? OR barangay_id IS NULL");
+        $stmt->bind_param('i', $barangay_id);
+        $stmt->execute();
+        $maxNotificationId = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
+        $stmt->close();
+
+        $stmt = $conn->prepare("SELECT COALESCE(MAX(id), 0) AS v FROM complaint_status_history WHERE barangay_id = ?");
+        $stmt->bind_param('i', $barangay_id);
+        $stmt->execute();
+        $maxStatusHistoryId = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
+        $stmt->close();
+    }
+
+    respond([
+        'ok' => true,
+        'stamp' => implode(':', [
+            $maxComplaintId,
+            $maxActivityId,
+            $maxNotificationId,
+            $maxStatusHistoryId
+        ]),
+        'server_time' => date('Y-m-d H:i:s')
     ]);
 }
 

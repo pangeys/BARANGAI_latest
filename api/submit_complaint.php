@@ -2,6 +2,12 @@
 if (session_status() === PHP_SESSION_NONE) session_start();
 require_once 'config.php';
 
+header('Content-Type: application/json; charset=utf-8');
+// Complaint tracking and submission responses are live data, never cache them.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 function out($ok, $data = [], $code = 200) {
     http_response_code($code);
     echo json_encode(['ok' => $ok] + $data);
@@ -55,6 +61,49 @@ function getResidentRuntimeSettings($db, $barangayId) {
     if (array_key_exists('auto_classify', $row))   $defaults['auto_classify'] = (int)$row['auto_classify'];
     if (array_key_exists('allow_anonymous', $row)) $defaults['allow_anonymous'] = (int)$row['allow_anonymous'];
     return $defaults;
+}
+
+
+/*
+ * Small resident-side change token used by the My Complaints live tracker.
+ * It changes when this resident files a complaint, when a complaint status
+ * history row is added, or when an officer assignment timestamp changes.
+ */
+function getResidentComplaintSyncStamp($db, $uid) {
+    $maxComplaintId = 0;
+    $maxHistoryId = 0;
+    $maxAssignmentTime = 0;
+
+    $stmt = $db->prepare(
+        'SELECT COALESCE(MAX(id), 0) AS v FROM complaints WHERE submitted_by = ?'
+    );
+    $stmt->bind_param('i', $uid);
+    $stmt->execute();
+    $maxComplaintId = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
+    $stmt->close();
+
+    $stmt = $db->prepare(
+        'SELECT COALESCE(MAX(h.id), 0) AS v
+           FROM complaint_status_history h
+           INNER JOIN complaints c ON c.complaint_id = h.complaint_id
+          WHERE c.submitted_by = ?'
+    );
+    $stmt->bind_param('i', $uid);
+    $stmt->execute();
+    $maxHistoryId = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
+    $stmt->close();
+
+    $stmt = $db->prepare(
+        'SELECT COALESCE(MAX(UNIX_TIMESTAMP(officer_assigned_at)), 0) AS v
+           FROM complaints
+          WHERE submitted_by = ?'
+    );
+    $stmt->bind_param('i', $uid);
+    $stmt->execute();
+    $maxAssignmentTime = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
+    $stmt->close();
+
+    return $maxComplaintId . ':' . $maxHistoryId . ':' . $maxAssignmentTime;
 }
 
 
@@ -126,6 +175,12 @@ if ($action === 'runtime_settings') {
     out(true, ['settings' => $settingsRow]);
 }
 
+if ($action === 'my_complaints_stamp') {
+    $stamp = getResidentComplaintSyncStamp($db, (int)$user['id']);
+    $db->close();
+    out(true, ['stamp' => $stamp]);
+}
+
 if ($action === 'my_complaints') {
     $uid = (int)$user['id'];
     $stmt = $db->prepare(
@@ -172,8 +227,9 @@ if ($action === 'my_complaints') {
     }
     unset($complaintRow);
 
+    $syncStamp = getResidentComplaintSyncStamp($db, $uid);
     $db->close();
-    out(true, ['complaints' => $list]);
+    out(true, ['complaints' => $list, 'sync_stamp' => $syncStamp]);
 }
 
 /* ════════════════════════════════════════════════════
@@ -327,6 +383,22 @@ if ($stmt->execute()) {
         $historyStmt->bind_param('siiss', $complaint_id, $barangay_id, $uid, $residentName, $officialNow);
         $historyStmt->execute();
         $historyStmt->close();
+    }
+
+    // Create an unread in-app alert for the complaint's barangay admins.
+    // This also changes the admin live-sync stamp, so an open dashboard refreshes
+    // within a few seconds without a manual page reload.
+    $notifCategory = $category !== '' ? $category : 'Unclassified';
+    $notifMessage = 'New resident complaint — ' . $notifCategory . ' · Priority: ' . $priority;
+    $notifTime = $officialClock->format('h:i A');
+    $notifStmt = $db->prepare(
+        "INSERT INTO notifications (msg, type, time, created_at, barangay_id, is_read)
+         VALUES (?, 'info', ?, ?, ?, 0)"
+    );
+    if ($notifStmt) {
+        $notifStmt->bind_param('sssi', $notifMessage, $notifTime, $officialNow, $barangay_id);
+        $notifStmt->execute();
+        $notifStmt->close();
     }
 
     // Return the authoritative filed time for immediate UI display if needed.

@@ -20,6 +20,18 @@ let _currentDetailComplaintId = null;
 let nextId     = 1;
 let notifStore = [];
 
+// Lightweight near-real-time dashboard synchronization. The dashboard polls
+// a tiny change token and reloads the full dataset only when that token changes.
+let _liveSyncTimer = null;
+let _liveSyncBusy = false;
+let _lastLiveSyncStamp = null;
+const LIVE_SYNC_INTERVAL_MS = 5000;
+
+// Fast-start state. Administrative data is loaded before the ~10.7 MB SVM
+// package so login-to-dashboard is not blocked by machine-learning assets.
+let _appBootStarted = false;
+let _classifierWarmupStarted = false;
+
 function isViewer() { return (window.CURRENT_USER || {}).role === 'viewer'; }
 function mask(text) {
   if (!isViewer()) return text;
@@ -49,33 +61,6 @@ function getSelectedSuperAdminBarangayId() {
 
 function applySuperAdminContext() {
 
-    /*
-  * Refresh Reports & Analytics when
-  * the Super Admin context changes.
-  */
-  const reportsScreen =
-    document.getElementById(
-      'screen-reports'
-    );
-
-  if (
-    reportsScreen &&
-    reportsScreen.classList.contains('active')
-  ) {
-
-    if (
-      typeof renderReports === 'function'
-    ) {
-      renderReports();
-    }
-
-    if (
-      typeof renderWeeklyBars === 'function'
-    ) {
-      renderWeeklyBars();
-    }
-  }
-
   const user =
     window.CURRENT_USER || {};
 
@@ -91,10 +76,9 @@ function applySuperAdminContext() {
     _officers =
       [..._allOfficers];
 
+    // Render only the screen the administrator is actually viewing. Hidden
+    // complaints/priority/kanban tables are built lazily when opened.
     renderAll();
-    renderOfficersTable();
-    renderOfficerStats();
-
     return;
   }
 
@@ -135,11 +119,9 @@ function applySuperAdminContext() {
   }
 
 
+  // Render only the currently visible module. This is especially important
+  // for Super Admin where the authorized complaint set can be much larger.
   renderAll();
-
-  renderOfficersTable();
-
-  renderOfficerStats();
 
     /*
   * Refresh Users & Roles too when that
@@ -219,88 +201,120 @@ if (
   }
 }
 
-async function loadFromDB() {
+async function loadFromDB(options = {}) {
+  const preserveOnError = !!options.preserveOnError;
 
   try {
-
-    const res =
-      await fetch(
-        API_URL + '?type=init',
-        {
-          credentials:'include',
-          cache:'no-store'
-        }
-      );
-
-    if (!res.ok) {
-      throw new Error(
-        'HTTP ' + res.status
-      );
-    }
-
-    const data =
-      await res.json();
-
-
-    _allComplaints =
-      Array.isArray(data.complaints)
-        ? data.complaints
-        : [];
-
-    _allOfficers =
-      Array.isArray(data.officers)
-        ? data.officers
-        : [];
-
-
-    /*
-     * Start with the complete authorized dataset.
-     * applySuperAdminContext() will narrow it
-     * when the Super Admin selects one barangay.
-     */
-    complaints =
-      [..._allComplaints];
-
-    _officers =
-      [..._allOfficers];
-
-
-    notifStore =
-      (data.notifications || []).map(
-        n => ({
-          msg:       n.msg,
-          type:      n.type,
-          time:      n.time,
-          createdAt: n.createdAt || null,
-          unread:    n.isRead ? false : true,
-        })
-      );
-
-
-    nextId =
-      parseInt(data.nextId) || 1;
-
-  } catch (err) {
-
-    console.warn(
-      'BICTS: Could not reach api.php, running in-memory.',
-      err
+    const res = await fetch(
+      API_URL + '?type=init&_=' + Date.now(),
+      {
+        credentials:'include',
+        cache:'no-store'
+      }
     );
 
-    complaints = [];
-    _officers  = [];
+    if (!res.ok) throw new Error('HTTP ' + res.status);
 
-    _allComplaints = [];
-    _allOfficers   = [];
+    const data = await res.json();
 
-    notifStore = [];
-    nextId = 1;
+    _allComplaints = Array.isArray(data.complaints) ? data.complaints : [];
+    _allOfficers = Array.isArray(data.officers) ? data.officers : [];
+
+    complaints = [..._allComplaints];
+    _officers = [..._allOfficers];
+
+    notifStore = (data.notifications || []).map(n => ({
+      msg:       n.msg,
+      type:      n.type,
+      time:      n.time,
+      createdAt: n.createdAt || null,
+      unread:    n.isRead ? false : true,
+    }));
+
+    nextId = parseInt(data.nextId) || 1;
+
+    applySuperAdminContext();
+    renderNotifs();
+    return true;
+  } catch (err) {
+    console.warn('BICTS: Could not refresh dashboard data.', err);
+
+    // A temporary hosting/network hiccup during live sync should never wipe
+    // the data already visible to the administrator.
+    if (!preserveOnError) {
+      complaints = [];
+      _officers = [];
+      _allComplaints = [];
+      _allOfficers = [];
+      notifStore = [];
+      nextId = 1;
+      applySuperAdminContext();
+      renderNotifs();
+    }
+    return false;
   }
+}
 
+async function fetchLiveSyncStamp() {
+  const res = await fetch(
+    API_URL + '?type=sync_stamp&_=' + Date.now(),
+    { credentials:'include', cache:'no-store' }
+  );
 
-  applySuperAdminContext();
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  if (!data || !data.ok || typeof data.stamp !== 'string') {
+    throw new Error('Invalid sync response');
+  }
+  return data.stamp;
+}
 
-  renderNotifs();
+async function syncDashboardFromServer(force = false) {
+  if (_liveSyncBusy) return;
+  if (!force && document.hidden) return;
+
+  _liveSyncBusy = true;
+  try {
+    const stamp = await fetchLiveSyncStamp();
+    const changed = force || _lastLiveSyncStamp === null || stamp !== _lastLiveSyncStamp;
+    if (!changed) return;
+
+    const detailScreen = document.getElementById('screen-complaint-detail');
+    const detailWasOpen = !!(detailScreen && detailScreen.classList.contains('active'));
+    const detailId = detailWasOpen ? _currentDetailComplaintId : null;
+
+    const loaded = await loadFromDB({ preserveOnError: true });
+    if (!loaded) return;
+
+    _lastLiveSyncStamp = stamp;
+
+    if (detailId && complaints.some(c => c.id === detailId)) {
+      await viewComplaint(detailId);
+    }
+  } catch (err) {
+    console.warn('BICTS: Live complaint sync unavailable.', err);
+  } finally {
+    _liveSyncBusy = false;
+  }
+}
+
+function startDashboardLiveSync() {
+  if (_liveSyncTimer) clearInterval(_liveSyncTimer);
+
+  // Do NOT force another full init request immediately after login. The first
+  // lightweight stamp check happens on the normal 5-second tick; because the
+  // local stamp starts null, that first tick also closes any startup race.
+  _liveSyncTimer = setInterval(() => {
+    syncDashboardFromServer(false);
+  }, LIVE_SYNC_INTERVAL_MS);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) syncDashboardFromServer(false);
+  });
+
+  window.addEventListener('focus', () => {
+    syncDashboardFromServer(false);
+  });
 }
 
 async function addComplaint(data) {
@@ -521,14 +535,57 @@ async function pushNotif(msg, type, barangayId = 0) {
   }
 }
 
+function getActiveScreenId() {
+  const active = document.querySelector('.screen.active');
+  if (!active || !active.id) return 'dashboard';
+  return active.id.replace(/^screen-/, '');
+}
+
+function renderAiResultsScreen() {
+  renderDatasetVersionTable();
+  renderModelComparison();
+  renderF1Table();
+  renderNlpPipeline();
+  renderAugTags();
+  if (typeof renderIsoEval === 'function') renderIsoEval();
+}
+
 function renderAll() {
-  renderDashboardStats();
-  renderCriticalCases();
-  renderComplaints();
-  renderPriorityQueue();
-  renderKanban();
-  renderDashboardDonut();
-  renderWeeklyBars();
+  // The old implementation rebuilt every large table/board after every DB
+  // refresh even when those modules were hidden. Render only what is visible.
+  switch (getActiveScreenId()) {
+    case 'dashboard':
+      renderDashboardStats();
+      renderCriticalCases();
+      renderDashboardDonut();
+      renderAccuracyBars();
+      break;
+    case 'complaints':
+      renderComplaints();
+      break;
+    case 'priority':
+      renderPriorityQueue();
+      break;
+    case 'cases':
+      renderKanban();
+      break;
+    case 'reports':
+      renderReports();
+      renderWeeklyBars();
+      break;
+    case 'notifs':
+      renderNotifs();
+      break;
+    case 'officers':
+      renderOfficersTable();
+      renderOfficerStats();
+      break;
+    case 'ai':
+      renderAiResultsScreen();
+      break;
+    default:
+      break;
+  }
 }
 
 /* ══════════════════════════════════════════════════════
@@ -573,6 +630,12 @@ function showScreen(id, navEl) {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     navEl.classList.add('active');
   }
+
+  // Lazy-render the newly opened module from the already-loaded in-memory
+  // dataset. Network synchronization can happen afterward without making the
+  // tab feel blank or delayed.
+  renderAll();
+
   if (id === 'users'    && typeof loadUsers === 'function')    loadUsers();
   if (id === 'officers' && typeof loadOfficers === 'function') loadOfficers();
 
@@ -581,6 +644,10 @@ function showScreen(id, navEl) {
     typeof loadSettingsGeneral === 'function'
   ) {
     loadSettingsGeneral();
+  }
+
+  if (['dashboard','complaints','priority','cases','reports','notifs'].includes(id)) {
+    syncDashboardFromServer(false);
   }
 }
 
@@ -858,7 +925,15 @@ async function viewComplaint(id) {
 function showModal(id) {
   const el = document.getElementById(id);
   if (el) el.classList.add('open');
-  if (id === 'submitModal') resetWizard();
+  if (id === 'submitModal') {
+    resetWizard();
+    // Submission needs the real exported SVM. Start loading it as soon as the
+    // wizard opens, without making the dashboard wait for it at login.
+    if (_runtimeSettings.auto_classify && typeof initClassifier === 'function') {
+      initClassifier();
+    }
+    if (typeof initFuzzyAHP === 'function') initFuzzyAHP();
+  }
 }
 function closeModal(id) {
   const el = document.getElementById(id);
@@ -884,7 +959,7 @@ function resetWizard() {
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
 }
 
-function wizardNext() {
+async function wizardNext() {
   if (wizardStep === 1) {
     const loc  = (document.getElementById('w-location')?.value  || '').trim();
     const desc = (document.getElementById('w-description')?.value || '').trim();
@@ -893,7 +968,18 @@ function wizardNext() {
   if (wizardStep < TOTAL_STEPS) {
     wizardStep++;
     renderWizardStep();
-    if (wizardStep === 3) runAiClassification();
+
+    if (wizardStep === 3) {
+      const nextBtn = document.getElementById('wizard-next');
+      if (_runtimeSettings.auto_classify && typeof initClassifier === 'function') {
+        if (nextBtn) { nextBtn.disabled = true; nextBtn.textContent = 'Loading AI model…'; }
+        await initClassifier();
+        if (nextBtn) nextBtn.disabled = false;
+      }
+      if (typeof initFuzzyAHP === 'function') await initFuzzyAHP();
+      runAiClassification();
+      renderWizardStep();
+    }
   }
 }
 
@@ -2096,39 +2182,78 @@ function _getField(id) { const el = document.getElementById(id); return el ? el.
 function _setField(id, value) { const el = document.getElementById(id); if (el) el.value = value; }
 
 /* ══════════════════════════════════════════════════════
-   BOOT
+   BOOT — FAST ADMIN STARTUP
 ══════════════════════════════════════════════════════ */
-document.addEventListener('DOMContentLoaded', async () => {
-  await initClassifier();
-  await initFuzzyAHP();
+function warmClassifierInBackground() {
+  if (_classifierWarmupStarted) return;
+  _classifierWarmupStarted = true;
+
+  const warm = function() {
+    if (typeof initFuzzyAHP === 'function') initFuzzyAHP();
+    if (typeof initClassifier === 'function') initClassifier();
+  };
+
+  // Give authentication, initial DB fetch, and first dashboard paint priority.
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(warm, { timeout: 4000 });
+  } else {
+    setTimeout(warm, 1500);
+  }
+}
+
+async function startBarangAIApp() {
+  if (_appBootStarted) return;
+  if (!window.CURRENT_USER) return;
+  _appBootStarted = true;
+
+  // Make the first paint clearly indicate that live data is arriving instead
+  // of briefly showing misleading zero totals while the API request is active.
+  ['stat-total','stat-pending','stat-resolved'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '…';
+  });
+  const recent = document.getElementById('dashboard-recent');
+  if (recent) {
+    recent.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-title">Loading live complaint data…</div><div class="empty-desc">Your dashboard will appear as soon as the database responds.</div></div>';
+  }
+
+  // 1) Get live administrative data FIRST. This used to wait behind roughly
+  //    10.7 MB of SVM JSON downloads + parsing.
   await loadFromDB();
 
-  renderAccuracyBars();
-  renderDashboardDonut();
-  renderDatasetVersionTable();
-  renderModelComparison();
-  renderF1Table();
-  renderNlpPipeline();
-  renderAugTags();
-  renderReports();
-  renderIsoEval();
-  renderUsers();
+  // 2) Initialize interaction helpers immediately after the first data paint.
+  initModalBackdropClose();
+  initTabs();
 
-  // Load barangay-specific settings automatically
-  // only for a normal Barangay Admin.
+  // Load barangay-specific settings automatically only for a normal Admin.
   // Super Admin must first select an explicit barangay.
-  if (
-    window.CURRENT_USER &&
-    window.CURRENT_USER.role === 'admin'
-  ) {
+  if (window.CURRENT_USER.role === 'admin') {
     loadSettingsGeneral();
   }
-  // Show only the General panel by default, hide the rest
+
+  // Show only the General panel by default, hide the rest.
   ['categories','ai','audit','officers'].forEach(name => {
     const p = document.getElementById('settings-panel-' + name);
     if (p) p.style.display = 'none';
   });
 
-  initModalBackdropClose();
-  initTabs();
+  // 3) Keep cross-device data fresh without immediately repeating the full
+  //    initial DB request.
+  startDashboardLiveSync();
+
+  // 4) Only after the dashboard is usable, warm the large ML assets in idle
+  //    time. Complaint submission still explicitly awaits the model if needed.
+  warmClassifierInBackground();
+}
+
+window.startBarangAIApp = startBarangAIApp;
+
+// index.html dispatches this as soon as authentication resolves, before the
+// Super Admin barangay directory finishes loading.
+document.addEventListener('barangai:user-ready', startBarangAIApp);
+
+// Fallback for cached/very-fast authentication where CURRENT_USER may already
+// be set by the time DOMContentLoaded is observed.
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.CURRENT_USER) startBarangAIApp();
 });

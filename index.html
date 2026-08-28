@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>BarangAI – Barangay Intelligent Case Tracking System</title>
 <link rel="stylesheet" href="styles.css?v=20260828-iosrender1">
 <link rel="stylesheet" href="mobile-responsive.css?v=20260828-iosrender1">   <!-- ADD THIS LINE -->
@@ -1991,11 +1994,11 @@
 
 <!-- Load order matters: data → classifier → dataset → render → app -->
 <script src="js/data.js"></script>
-<script src="js/classifier.js?v=20260814-split2"></script>
+<script src="js/classifier.js?v=20260828-fastload1"></script>
 <script src="js/dataset.js"></script>
 <script src="js/password-rules.js"></script>
 <script src="js/render.js?v=20260828-timeline1"></script>
-<script src="js/app.js?v=20260828-navfix1"></script>
+<script src="js/app.js?v=20260828-fast-sync1"></script>
 <script src="js/mobile.js"></script>
 
 <script>
@@ -2036,7 +2039,56 @@
 
   window.CURRENT_USER = user;
 
+  // Start the DB-first app bootstrap as soon as authentication is known. This
+  // runs in parallel with role-specific UI setup and Super Admin directory
+  // loading instead of waiting for those secondary requests to finish.
+  document.dispatchEvent(new CustomEvent('barangai:user-ready'));
+
   const shell = document.getElementById('shell');
+  let shellRevealed = false;
+
+  function revealAuthenticatedShell() {
+    if (shellRevealed || !shell) return;
+    shellRevealed = true;
+
+    shell.style.visibility = 'visible';
+    shell.style.opacity = '1';
+    shell.style.pointerEvents = 'auto';
+
+    document.querySelectorAll('.screen').forEach(function(screen){
+      screen.style.removeProperty('display');
+      screen.classList.remove('active');
+    });
+    const dashboardScreen = document.getElementById('screen-dashboard');
+    if (dashboardScreen) dashboardScreen.classList.add('active');
+
+    const topbar = document.getElementById('topbar');
+    const main = document.getElementById('main');
+    const content = document.getElementById('content');
+    if (main) {
+      main.style.display = 'flex';
+      main.style.visibility = 'visible';
+      main.style.opacity = '1';
+    }
+    if (topbar) {
+      topbar.style.display = 'flex';
+      topbar.style.visibility = 'visible';
+    }
+    if (content) {
+      content.style.display = 'block';
+      content.style.visibility = 'visible';
+      content.style.opacity = '1';
+      content.scrollTop = 0;
+    }
+
+    void shell.offsetHeight;
+    requestAnimationFrame(function(){
+      if (dashboardScreen) void dashboardScreen.offsetHeight;
+      requestAnimationFrame(function(){
+        document.dispatchEvent(new CustomEvent('barangai:admin-ready'));
+      });
+    });
+  }
 
   const nameEl =
     document.querySelector('#sidebar-user .user-name');
@@ -2122,6 +2174,10 @@
       dashSub.textContent = 'System-wide overview across all BarangAI barangays.';
     }
 
+    // Do not keep the whole Super Admin interface hidden while the barangay
+    // directory request runs. Complaint/dashboard data is loading in parallel.
+    revealAuthenticatedShell();
+
     /*
      * Load the global barangay directory from
      * our Super Admin-only backend endpoint.
@@ -2129,8 +2185,8 @@
     try {
 
       const response = await fetch(
-        'api.php?type=barangays',
-        { credentials:'include' }
+        'api.php?type=barangays&_=' + Date.now(),
+        { credentials:'include', cache:'no-store' }
       );
 
       const data = await response.json();
@@ -2369,53 +2425,9 @@
     }
   }
 
-  // iOS/Safari: the shell stays in layout from the first paint.
-  // Only its visibility is gated by authentication. This avoids Safari
-  // failing to repaint a complex flex tree after display:none is removed.
-  shell.style.visibility = 'visible';
-  shell.style.opacity = '1';
-  shell.style.pointerEvents = 'auto';
-
-  // Always land on a real visible dashboard after authentication.
-  // Clear any legacy inline display overrides first. Screen visibility must
-  // be controlled only by the .screen / .screen.active CSS classes so that
-  // navigation can correctly switch away from Dashboard on desktop/mobile.
-  document.querySelectorAll('.screen').forEach(function(screen){
-    screen.style.removeProperty('display');
-    screen.classList.remove('active');
-  });
-  const dashboardScreen = document.getElementById('screen-dashboard');
-  if (dashboardScreen) {
-    dashboardScreen.classList.add('active');
-  }
-
-  const topbar = document.getElementById('topbar');
-  const main = document.getElementById('main');
-  const content = document.getElementById('content');
-  if (main) {
-    main.style.display = 'flex';
-    main.style.visibility = 'visible';
-    main.style.opacity = '1';
-  }
-  if (topbar) {
-    topbar.style.display = 'flex';
-    topbar.style.visibility = 'visible';
-  }
-  if (content) {
-    content.style.display = 'block';
-    content.style.visibility = 'visible';
-    content.style.opacity = '1';
-    content.scrollTop = 0;
-  }
-
-  // Force two paint/layout cycles before mobile helpers are allowed to add UI.
-  void shell.offsetHeight;
-  requestAnimationFrame(function(){
-    if (dashboardScreen) void dashboardScreen.offsetHeight;
-    requestAnimationFrame(function(){
-      document.dispatchEvent(new CustomEvent('barangai:admin-ready'));
-    });
-  });
+  // Normal Admin reaches this point immediately; Super Admin may already have
+  // been revealed above while its barangay directory continues loading.
+  revealAuthenticatedShell();
 
 })();
 /*

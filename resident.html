@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>BarangAI – Resident Portal</title>
 <link rel="stylesheet" href="styles.css?v=20260828-timeline1">
 <link rel="stylesheet" href="mobile-responsive.css?v=20260828-timeline1"> 
@@ -352,13 +355,20 @@
 <!-- load classifier scripts (same ones used by admin dashboard) -->
 <script src="js/data.js"></script>
 <script src="js/dataset.js"></script>
-<script src="js/classifier.js"></script>
+<script src="js/classifier.js?v=20260828-fastload1"></script>
 <script src="js/mobile.js?v=20260811-mobile3"></script>   <!-- ADD THIS LINE -->
 
 <script>
 const AUTH_API = 'api/auth.php';
 const SUB_API  = 'api/submit_complaint.php';
 let RESIDENT_RUNTIME_SETTINGS = { auto_classify: true, allow_anonymous: true };
+
+// Live tracker state. Only a tiny sync token is polled; the full complaint
+// list is fetched again only when this resident's records actually change.
+let _complaintSyncTimer = null;
+let _complaintSyncBusy = false;
+let _lastComplaintSyncStamp = null;
+const COMPLAINT_SYNC_INTERVAL_MS = 5000;
 
 /* ── live resident account guard ────────────────────────────────
    A resident may be disabled by an administrator on another device.
@@ -436,7 +446,10 @@ async function init(){
 
   // Load barangay runtime settings that are enforced again server-side.
   try {
-    const sr = await fetch(SUB_API + '?action=runtime_settings', { credentials:'include' });
+    const sr = await fetch(SUB_API + '?action=runtime_settings&_=' + Date.now(), {
+      credentials:'include',
+      cache:'no-store'
+    });
     const sd = await sr.json();
     if (sd.ok && sd.settings) {
       RESIDENT_RUNTIME_SETTINGS.auto_classify = !!Number(sd.settings.auto_classify);
@@ -480,6 +493,7 @@ async function init(){
   }
 
   startResidentAccountGuard();
+  startComplaintLiveSync();
 }
 
 /* ── view toggle (submit vs track) ── */
@@ -497,24 +511,98 @@ function showView(which){
 }
 
 /* ── load this resident's own complaints ── */
-async function loadMyComplaints(){
+function isComplaintTrackerOpen(){
+  const trackNav = document.getElementById('nav-track');
+  return !!(trackNav && trackNav.classList.contains('active'));
+}
+
+async function loadMyComplaints(silent = false){
   const box = document.getElementById('trackList');
-  box.innerHTML = '<div class="rc-empty"><div class="rc-empty-icon">⏳</div>Loading your complaints…</div>';
+  if (!silent) {
+    box.innerHTML = '<div class="rc-empty"><div class="rc-empty-icon">⏳</div>Loading your complaints…</div>';
+  }
+
   try {
-    const r = await fetch(SUB_API + '?action=my_complaints');
+    const r = await fetch(SUB_API + '?action=my_complaints&_=' + Date.now(), {
+      credentials:'include',
+      cache:'no-store'
+    });
     const d = await r.json();
-    if (!d.ok) {
-      box.innerHTML = '<div class="rc-empty"><div class="rc-empty-icon">⚠️</div>' + (d.error || 'Could not load your complaints.') + '</div>';
+
+    if (!r.ok && d && d.reason) {
+      redirectForAccountState(d.reason);
       return;
     }
+
+    if (!d.ok) {
+      if (!silent) {
+        box.innerHTML = '<div class="rc-empty"><div class="rc-empty-icon">⚠️</div>' + (d.error || 'Could not load your complaints.') + '</div>';
+      }
+      return;
+    }
+
+    if (typeof d.sync_stamp === 'string') {
+      _lastComplaintSyncStamp = d.sync_stamp;
+    }
+
     if (!d.complaints.length) {
       box.innerHTML = '<div class="rc-empty"><div class="rc-empty-icon">📭</div>You haven\'t submitted any complaints yet.</div>';
       return;
     }
+
+    // Silent live refresh replaces the cards directly, so there is no loading
+    // flash every five seconds while the resident is reading the tracker.
     box.innerHTML = d.complaints.map(renderComplaintCard).join('');
   } catch(e) {
-    box.innerHTML = '<div class="rc-empty"><div class="rc-empty-icon">⚠️</div>Cannot reach BarangAI right now. Check your connection and try again.</div>';
+    if (!silent) {
+      box.innerHTML = '<div class="rc-empty"><div class="rc-empty-icon">⚠️</div>Cannot reach BarangAI right now. Check your connection and try again.</div>';
+    }
   }
+}
+
+async function checkMyComplaintSync(){
+  if (_complaintSyncBusy || document.hidden || !isComplaintTrackerOpen()) return;
+
+  _complaintSyncBusy = true;
+  try {
+    const r = await fetch(SUB_API + '?action=my_complaints_stamp&_=' + Date.now(), {
+      credentials:'include',
+      cache:'no-store'
+    });
+    const d = await r.json();
+
+    if (!r.ok && d && d.reason) {
+      redirectForAccountState(d.reason);
+      return;
+    }
+
+    if (!r.ok || !d || !d.ok || typeof d.stamp !== 'string') return;
+
+    if (_lastComplaintSyncStamp === null) {
+      _lastComplaintSyncStamp = d.stamp;
+      return;
+    }
+
+    if (d.stamp !== _lastComplaintSyncStamp) {
+      await loadMyComplaints(true);
+    }
+  } catch(e) {
+    // Best-effort live refresh; keep the current tracker visible and retry.
+  } finally {
+    _complaintSyncBusy = false;
+  }
+}
+
+function startComplaintLiveSync(){
+  if (_complaintSyncTimer) clearInterval(_complaintSyncTimer);
+
+  _complaintSyncTimer = setInterval(checkMyComplaintSync, COMPLAINT_SYNC_INTERVAL_MS);
+
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden) checkMyComplaintSync();
+  });
+
+  window.addEventListener('focus', checkMyComplaintSync);
 }
 
 /* ── render one complaint card with progress ── */
@@ -698,6 +786,14 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   // ── run SVM classifier ──
   let category = '', confidence = 0, priority = 'Low', priority_badge = 'b-gray', score = '0';
   try {
+    // The model is normally warming in the background. If the resident submits
+    // unusually quickly, wait here so we never save a keyword-fallback result
+    // merely because the large SVM files had not finished loading yet.
+    if (RESIDENT_RUNTIME_SETTINGS.auto_classify && typeof initClassifier === 'function') {
+      await initClassifier();
+    }
+    if (typeof initFuzzyAHP === 'function') await initFuzzyAHP();
+
     if (RESIDENT_RUNTIME_SETTINGS.auto_classify && typeof classifyDescription === 'function') {
       const classResult = classifyDescription(desc);
       const ahpResult   = computeAHPScore(classResult.cat, parseInt(affected) || 1, desc);
@@ -740,6 +836,10 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
     }
 
     if (data.ok) {
+      // The server-side complaint set changed. The next tracker opening/check
+      // must establish a fresh sync token rather than trusting the old one.
+      _lastComplaintSyncStamp = null;
+
       document.getElementById('successRef').textContent = data.complaint_no;
       document.getElementById('successCat').textContent = category || 'Unclassified';
 

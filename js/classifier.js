@@ -29,6 +29,8 @@
 let _model    = null;
 let _modelErr = false;
 let _ahp      = null;
+let _modelInitPromise = null;
+let _ahpInitPromise   = null;
 
 function _fetchJson(path) {
   return fetch(path).then(r => {
@@ -38,7 +40,10 @@ function _fetchJson(path) {
 }
 
 function initClassifier() {
-  return Promise.all([
+  if (_model) return Promise.resolve(_model);
+  if (_modelInitPromise) return _modelInitPromise;
+
+  _modelInitPromise = Promise.all([
     _fetchJson('data/svm_model_core.json'),
     _fetchJson('data/svm_word_tfidf.json'),
     _fetchJson('data/svm_char_tfidf.json'),
@@ -58,20 +63,29 @@ function initClassifier() {
         data.model.classes.length, 'categories ·',
         (wordN + charN).toLocaleString(), 'features'
       );
+      return _model;
     })
     .catch(err => {
       _modelErr = true;
       _model = null;
+      _modelInitPromise = null;
       console.warn('BarangAI: Could not load final split SVM export; using keyword fallback.', err);
+      return null;
     });
+
+  return _modelInitPromise;
 }
 
 function initFuzzyAHP() {
-  return fetch('data/fuzzy_ahp_config.json')
+  if (_ahp) return Promise.resolve(_ahp);
+  if (_ahpInitPromise) return _ahpInitPromise;
+
+  _ahpInitPromise = fetch('data/fuzzy_ahp_config.json')
     .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
     .then(data => {
       _ahp = data;
       console.log('BarangAI: Fuzzy AHP config loaded — CR =', data.consistency_ratio.toFixed(4));
+      return _ahp;
     })
     .catch(err => {
       console.warn('BarangAI: Could not load fuzzy_ahp_config.json, using data.js defaults.', err);
@@ -84,7 +98,10 @@ function initFuzzyAHP() {
         priority_tier_cutoffs: PRIORITY_TIER_CUTOFFS,
         historical_crossref_boost: HISTORICAL_CROSSREF_BOOST,
       };
+      return _ahp;
     });
+
+  return _ahpInitPromise;
 }
 
 /* Exact preprocessing declared by the browser export. */
