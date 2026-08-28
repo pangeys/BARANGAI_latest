@@ -736,9 +736,83 @@ function renderComplaintCard(c){
     '</div>' +
     '<div class="rc-meta">Assigned officer: <b>' + officer + '</b>' + officerAssigned +
       (c.priority ? ' &nbsp;·&nbsp; Priority: <b>' + esc(c.priority) + '</b>' : '') + '</div>' +
+    renderClassificationReviewControl(c) +
     '<div class="rc-steps">' + steps + '</div>' +
     statusLine +
   '</div>';
+}
+
+function renderClassificationReviewControl(c){
+  const status = String(c.classification_review_status || '').toLowerCase();
+  const cid = esc(c.complaint_id || '');
+
+  if (status === 'pending') {
+    return '<div style="margin:10px 0 2px;padding:10px 12px;border-radius:9px;background:#fff8e8;border:1px solid #f2d18a;font-size:11px;color:#7a5200;line-height:1.55;">' +
+      '<b>Classification review requested.</b><br>Your barangay has been notified and will verify the system-generated category.' +
+      '</div>';
+  }
+
+  const reviewedNote = status === 'resolved'
+    ? '<div style="margin:10px 0 6px;font-size:10px;color:var(--text3,#7b8794);">✓ Classification was reviewed by your barangay.</div>'
+    : '';
+
+  return reviewedNote +
+    '<button type="button" id="review-btn-' + cid + '" onclick="requestClassificationReview(\'' + cid + '\')" ' +
+    'style="margin-top:8px;border:1px solid #d8e1ea;background:#fff;color:#35506b;border-radius:8px;padding:8px 11px;font-size:11px;font-weight:600;cursor:pointer;">' +
+    (status === 'resolved' ? 'Classification still doesn\'t match my concern' : 'Classification doesn\'t match my concern') +
+    '</button>';
+}
+
+async function requestClassificationReview(complaintId){
+  const btn = document.getElementById('review-btn-' + complaintId);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Requesting review…';
+  }
+
+  try {
+    const r = await fetch(SUB_API + '?action=request_classification_review', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      cache:'no-store',
+      body:JSON.stringify({ complaint_id: complaintId })
+    });
+    const d = await r.json();
+
+    if (!r.ok && d && d.reason) {
+      redirectForAccountState(d.reason);
+      return;
+    }
+    if (!r.ok || !d.ok) throw new Error(d.error || 'Could not request classification review.');
+
+    _lastComplaintSyncStamp = null;
+    await loadMyComplaints(true);
+    showResidentReviewToast('Classification review requested. Your barangay has been notified.');
+  } catch(e) {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Classification doesn\'t match my concern';
+    }
+    showResidentReviewToast(e.message || 'Could not request review. Please try again.', true);
+  }
+}
+
+function showResidentReviewToast(message, isError = false){
+  let toast = document.getElementById('classification-review-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'classification-review-toast';
+    toast.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:9999;max-width:360px;padding:12px 14px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.16);font-size:12px;line-height:1.5;font-weight:600;transition:opacity .2s ease;';
+    document.body.appendChild(toast);
+  }
+  toast.style.background = isError ? '#fff1f1' : '#eef8ff';
+  toast.style.border = isError ? '1px solid #efb1b1' : '1px solid #b7d9f4';
+  toast.style.color = isError ? '#9b1c1c' : '#174f78';
+  toast.style.opacity = '1';
+  toast.textContent = message;
+  clearTimeout(window._classificationReviewToastTimer);
+  window._classificationReviewToastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 3800);
 }
 
 /* ── tiny HTML escaper ── */

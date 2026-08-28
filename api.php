@@ -310,6 +310,7 @@ if ($method === 'GET' && $type === 'sync_stamp') {
     $maxActivityId = 0;
     $maxNotificationId = 0;
     $maxStatusHistoryId = 0;
+    $maxClassificationReviewTime = 0;
 
     if ($isSuperAdmin) {
         $row = $conn->query("SELECT COALESCE(MAX(id), 0) AS v FROM complaints")->fetch_assoc();
@@ -323,6 +324,9 @@ if ($method === 'GET' && $type === 'sync_stamp') {
 
         $row = $conn->query("SELECT COALESCE(MAX(id), 0) AS v FROM complaint_status_history")->fetch_assoc();
         $maxStatusHistoryId = (int)($row['v'] ?? 0);
+
+        $row = $conn->query("SELECT COALESCE(MAX(UNIX_TIMESTAMP(updated_at)), 0) AS v FROM classification_reviews")->fetch_assoc();
+        $maxClassificationReviewTime = (int)($row['v'] ?? 0);
     } else {
         $stmt = $conn->prepare("SELECT COALESCE(MAX(id), 0) AS v FROM complaints WHERE barangay_id = ?");
         $stmt->bind_param('i', $barangay_id);
@@ -347,6 +351,12 @@ if ($method === 'GET' && $type === 'sync_stamp') {
         $stmt->execute();
         $maxStatusHistoryId = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
         $stmt->close();
+
+        $stmt = $conn->prepare("SELECT COALESCE(MAX(UNIX_TIMESTAMP(updated_at)), 0) AS v FROM classification_reviews WHERE barangay_id = ?");
+        $stmt->bind_param('i', $barangay_id);
+        $stmt->execute();
+        $maxClassificationReviewTime = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
+        $stmt->close();
     }
 
     respond([
@@ -355,7 +365,8 @@ if ($method === 'GET' && $type === 'sync_stamp') {
             $maxComplaintId,
             $maxActivityId,
             $maxNotificationId,
-            $maxStatusHistoryId
+            $maxStatusHistoryId,
+            $maxClassificationReviewTime
         ]),
         'server_time' => date('Y-m-d H:i:s')
     ]);
@@ -408,13 +419,36 @@ if ($method === 'GET' && $type === 'status_history') {
 if ($method === 'GET' && $type === 'init') {
     $complaints = [];
     if ($barangay_id !== null && $barangay_id > 0) {
-    $stmt = $conn->prepare("SELECT * FROM complaints WHERE barangay_id = ? ORDER BY created_at DESC");
+    $stmt = $conn->prepare(
+        "SELECT c.*,
+                cr.status AS classification_review_status,
+                cr.requested_at AS classification_review_requested_at,
+                cr.original_category AS classification_review_original_category,
+                cr.corrected_category AS classification_review_corrected_category,
+                cr.corrected_by_name AS classification_review_corrected_by_name,
+                cr.corrected_at AS classification_review_corrected_at
+           FROM complaints c
+           LEFT JOIN classification_reviews cr ON cr.complaint_id = c.complaint_id
+          WHERE c.barangay_id = ?
+          ORDER BY c.created_at DESC"
+    );
     $stmt->bind_param('i', $barangay_id);
     $stmt->execute();
     $r = $stmt->get_result();
     $stmt->close();
     } elseif ($isSuperAdmin) {
-    $r = $conn->query("SELECT * FROM complaints ORDER BY created_at DESC");
+    $r = $conn->query(
+        "SELECT c.*,
+                cr.status AS classification_review_status,
+                cr.requested_at AS classification_review_requested_at,
+                cr.original_category AS classification_review_original_category,
+                cr.corrected_category AS classification_review_corrected_category,
+                cr.corrected_by_name AS classification_review_corrected_by_name,
+                cr.corrected_at AS classification_review_corrected_at
+           FROM complaints c
+           LEFT JOIN classification_reviews cr ON cr.complaint_id = c.complaint_id
+          ORDER BY c.created_at DESC"
+    );
     } else {
     respond(['error' => 'Invalid barangay scope'], 403);
     }
@@ -444,6 +478,12 @@ if ($method === 'GET' && $type === 'init') {
             'closedAt'          => $row['closed_at'] ?? null,
             'closeReason'       => $row['close_reason'] ?? '',
             'barangay_id' => intval($row['barangay_id']),
+            'classificationReviewStatus' => $row['classification_review_status'] ?? '',
+            'classificationReviewRequestedAt' => $row['classification_review_requested_at'] ?? null,
+            'classificationReviewOriginalCategory' => $row['classification_review_original_category'] ?? '',
+            'classificationReviewCorrectedCategory' => $row['classification_review_corrected_category'] ?? '',
+            'classificationReviewCorrectedByName' => $row['classification_review_corrected_by_name'] ?? '',
+            'classificationReviewCorrectedAt' => $row['classification_review_corrected_at'] ?? null,
         ];
     }
     $notifs = [];
@@ -929,6 +969,157 @@ if ($method === 'POST' && $action === 'add_complaint') {
         respond(["success" => true, "id" => $cid]);
     }
     else respond(["success" => false, "error" => $conn->error], 500);
+}
+
+/* ════════════════════════════════════════════════════
+   PUT action=update_classification
+   Semi-automated correction workflow. The SVM remains the initial
+   classifier; authorized Admin/Super Admin users may correct the category
+   after resident review requests or when staff identify a misclassification.
+════════════════════════════════════════════════════ */
+if ($method === 'PUT' && $action === 'update_classification') {
+    $complaintId = trim((string)($body['complaint_id'] ?? ''));
+    $newCategory = trim((string)($body['category'] ?? ''));
+    $score = (int)($body['score'] ?? -1);
+
+    $allowedCategories = [
+        'Neighbor Disputes',
+        'Money and Debt Disputes',
+        'Family Matters',
+        'Petty Criminal Offenses',
+        'Property Disputes',
+        'Contract Disputes'
+    ];
+
+    if ($complaintId === '' || !in_array($newCategory, $allowedCategories, true)) {
+        respond(['success' => false, 'error' => 'A valid complaint and one of the six KP categories are required.'], 422);
+    }
+
+    if ($score < 0 || $score > 100) {
+        respond(['success' => false, 'error' => 'Invalid priority score.'], 422);
+    }
+
+    if ($score >= 70) {
+        $priority = 'Critical';
+        $priorityBadge = 'b-red';
+    } elseif ($score >= 42) {
+        $priority = 'High';
+        $priorityBadge = 'b-amber';
+    } elseif ($score >= 21) {
+        $priority = 'Medium';
+        $priorityBadge = 'b-blue';
+    } else {
+        $priority = 'Low';
+        $priorityBadge = 'b-green';
+    }
+
+    if ($isSuperAdmin) {
+        $stmt = $conn->prepare(
+            "SELECT complaint_id, category, barangay_id, submitted_by
+               FROM complaints
+              WHERE complaint_id = ?
+              LIMIT 1"
+        );
+        $stmt->bind_param('s', $complaintId);
+    } else {
+        $stmt = $conn->prepare(
+            "SELECT complaint_id, category, barangay_id, submitted_by
+               FROM complaints
+              WHERE complaint_id = ? AND barangay_id = ?
+              LIMIT 1"
+        );
+        $stmt->bind_param('si', $complaintId, $barangay_id);
+    }
+
+    $stmt->execute();
+    $complaint = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$complaint) {
+        respond(['success' => false, 'error' => 'Complaint not found in your authorized scope.'], 404);
+    }
+
+    $oldCategory = (string)($complaint['category'] ?? 'Unclassified');
+    $targetBarangayId = (int)($complaint['barangay_id'] ?? 0);
+    $residentId = $complaint['submitted_by'] === null ? null : (int)$complaint['submitted_by'];
+    $officialNow = date('Y-m-d H:i:s');
+
+    $conn->begin_transaction();
+    try {
+        $update = $conn->prepare(
+            "UPDATE complaints
+                SET category = ?, score = ?, priority = ?, priority_badge = ?
+              WHERE complaint_id = ?"
+        );
+        $scoreString = (string)$score;
+        $update->bind_param('sssss', $newCategory, $scoreString, $priority, $priorityBadge, $complaintId);
+        if (!$update->execute()) {
+            throw new Exception('Could not save classification.');
+        }
+        $update->close();
+
+        $review = $conn->prepare(
+            "INSERT INTO classification_reviews
+                (complaint_id, barangay_id, resident_id, original_category,
+                 requested_at, status, corrected_category, corrected_by,
+                 corrected_by_name, corrected_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'resolved', ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                 status = 'resolved',
+                 corrected_category = VALUES(corrected_category),
+                 corrected_by = VALUES(corrected_by),
+                 corrected_by_name = VALUES(corrected_by_name),
+                 corrected_at = VALUES(corrected_at),
+                 updated_at = VALUES(updated_at)"
+        );
+        $requestedAt = $officialNow;
+        $residentIdForBind = $residentId ?? 0;
+        $review->bind_param(
+            'siisssissss',
+            $complaintId,
+            $targetBarangayId,
+            $residentIdForBind,
+            $oldCategory,
+            $requestedAt,
+            $newCategory,
+            $userId,
+            $userName,
+            $officialNow,
+            $officialNow,
+            $officialNow
+        );
+        if (!$review->execute()) {
+            throw new Exception('Could not record classification review.');
+        }
+        $review->close();
+
+        logActivity(
+            $conn,
+            $userId,
+            $userName,
+            $targetBarangayId,
+            'classification_corrected',
+            "Complaint $complaintId classification reviewed: '$oldCategory' -> '$newCategory' [priority:$priority score:$score]"
+        );
+
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollback();
+        respond(['success' => false, 'error' => $e->getMessage() ?: 'Could not update classification.'], 500);
+    }
+
+    respond([
+        'success' => true,
+        'complaint_id' => $complaintId,
+        'old_category' => $oldCategory,
+        'category' => $newCategory,
+        'score' => $scoreString,
+        'priority' => $priority,
+        'priority_badge' => $priorityBadge,
+        'review_status' => 'resolved',
+        'corrected_at' => $officialNow,
+        'corrected_by_name' => $userName
+    ]);
 }
 
 if ($method === 'PUT' && $action === 'assign_officer') {

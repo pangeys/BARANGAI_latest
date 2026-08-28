@@ -501,6 +501,7 @@
       <button class="btn btn-secondary btn-sm" onclick="showScreen('complaints',null)">← Back</button>
       <!-- CHANGED: now calls openAssignModal() with the current complaint ID -->
       <button class="btn btn-primary btn-sm" onclick="openAssignModal(_currentDetailComplaintId)">Assign Officer</button>
+      <button class="btn btn-secondary btn-sm" id="detail-edit-classification-btn" onclick="openClassificationModal(_currentDetailComplaintId)">✎ Edit Classification</button>
       <button class="btn btn-secondary btn-sm" id="detail-resolve-btn" style="color:var(--green);border-color:var(--green);">✓ Resolve</button>
       <button class="btn btn-secondary btn-sm" id="detail-close-btn" style="color:var(--text3);">⊘ Close Case</button>
     </div>
@@ -527,6 +528,7 @@
       <div class="card">
         <div class="card-header"><div class="card-title">🤖 NLP Classification Result</div></div>
         <div class="card-body">
+          <div id="detail-classification-review-banner" style="display:none;margin-bottom:12px;padding:10px 12px;border-radius:9px;background:#fff8e8;border:1px solid #f2d18a;color:#7a5200;font-size:11px;line-height:1.55;"></div>
           <div class="nlp-box">
             <div class="nlp-label">SVM Model — Category Scores</div>
             <div id="nlp-conf-bars"></div>
@@ -1630,6 +1632,44 @@
 <!-- ═══════════════════════════════════════════════════
      ASSIGN OFFICER MODAL  ← UPDATED: dynamic, DB-backed
 ═══════════════════════════════════════════════════ -->
+<div id="classificationModal" class="modal-overlay">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Edit Complaint Classification</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px;" id="classification-modal-id">—</div>
+      </div>
+      <button class="modal-x" onclick="closeModal('classificationModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="classification-review-note" style="display:none;margin-bottom:12px;padding:10px 12px;border-radius:9px;background:#fff8e8;border:1px solid #f2d18a;color:#7a5200;font-size:11px;line-height:1.55;"></div>
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">Current Classification</div>
+        <div id="classification-current" style="font-size:13px;font-weight:700;color:var(--blue);padding:9px 0;">—</div>
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <div class="label">Correct Category <span>*</span></div>
+        <select class="inp" id="classification-category">
+          <option value="Neighbor Disputes">Neighbor Disputes</option>
+          <option value="Money and Debt Disputes">Money and Debt Disputes</option>
+          <option value="Family Matters">Family Matters</option>
+          <option value="Petty Criminal Offenses">Petty Criminal Offenses</option>
+          <option value="Property Disputes">Property Disputes</option>
+          <option value="Contract Disputes">Contract Disputes</option>
+        </select>
+      </div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.6;">
+        BARANGAI will recompute the Fuzzy AHP priority after the category is saved so the classification and priority remain consistent.
+      </div>
+      <div id="classification-modal-msg" style="min-height:18px;margin-top:10px;font-size:11px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('classificationModal')">Cancel</button>
+      <button class="btn btn-primary" id="classification-save-btn" onclick="saveClassificationCorrection()">Save Classification</button>
+    </div>
+  </div>
+</div>
+
 <div id="assignModal" class="modal-overlay">
   <div class="modal" style="max-width:440px;">
     <div class="modal-header">
@@ -1997,8 +2037,8 @@
 <script src="js/classifier.js?v=20260828-fastload1"></script>
 <script src="js/dataset.js"></script>
 <script src="js/password-rules.js"></script>
-<script src="js/render.js?v=20260828-timeline1"></script>
-<script src="js/app.js?v=20260828-fast-sync1"></script>
+<script src="js/render.js?v=20260828-classreview1"></script>
+<script src="js/app.js?v=20260828-classreview1"></script>
 <script src="js/mobile.js"></script>
 
 <script>

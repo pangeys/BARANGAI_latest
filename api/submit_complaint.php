@@ -73,6 +73,8 @@ function getResidentComplaintSyncStamp($db, $uid) {
     $maxComplaintId = 0;
     $maxHistoryId = 0;
     $maxAssignmentTime = 0;
+    $maxClassificationReviewTime = 0;
+    $classificationStateHash = '0';
 
     $stmt = $db->prepare(
         'SELECT COALESCE(MAX(id), 0) AS v FROM complaints WHERE submitted_by = ?'
@@ -103,7 +105,35 @@ function getResidentComplaintSyncStamp($db, $uid) {
     $maxAssignmentTime = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
     $stmt->close();
 
-    return $maxComplaintId . ':' . $maxHistoryId . ':' . $maxAssignmentTime;
+    $stmt = $db->prepare(
+        'SELECT COALESCE(MAX(UNIX_TIMESTAMP(cr.updated_at)), 0) AS v
+           FROM classification_reviews cr
+           INNER JOIN complaints c ON c.complaint_id = cr.complaint_id
+          WHERE c.submitted_by = ?'
+    );
+    $stmt->bind_param('i', $uid);
+    $stmt->execute();
+    $maxClassificationReviewTime = (int)($stmt->get_result()->fetch_assoc()['v'] ?? 0);
+    $stmt->close();
+
+    $stmt = $db->prepare(
+        "SELECT COALESCE(SUM(CRC32(CONCAT_WS('|',
+                    c.complaint_id,
+                    COALESCE(c.category, ''),
+                    COALESCE(c.score, ''),
+                    COALESCE(cr.status, ''),
+                    COALESCE(cr.corrected_category, '')
+                ))), 0) AS v
+           FROM complaints c
+           LEFT JOIN classification_reviews cr ON cr.complaint_id = c.complaint_id
+          WHERE c.submitted_by = ?"
+    );
+    $stmt->bind_param('i', $uid);
+    $stmt->execute();
+    $classificationStateHash = (string)($stmt->get_result()->fetch_assoc()['v'] ?? '0');
+    $stmt->close();
+
+    return $maxComplaintId . ':' . $maxHistoryId . ':' . $maxAssignmentTime . ':' . $maxClassificationReviewTime . ':' . $classificationStateHash;
 }
 
 
@@ -184,13 +214,19 @@ if ($action === 'my_complaints_stamp') {
 if ($action === 'my_complaints') {
     $uid = (int)$user['id'];
     $stmt = $db->prepare(
-        "SELECT complaint_id, date_filed, created_at, description, location,
-                incident_date, incident_time, category, confidence,
-                priority, priority_badge, officer, officer_assigned_at,
-                status, status_badge, resolved_at, closed_at, close_reason
-           FROM complaints
-          WHERE submitted_by = ?
-          ORDER BY created_at DESC"
+        "SELECT c.complaint_id, c.date_filed, c.created_at, c.description, c.location,
+                c.incident_date, c.incident_time, c.category, c.confidence,
+                c.priority, c.priority_badge, c.officer, c.officer_assigned_at,
+                c.status, c.status_badge, c.resolved_at, c.closed_at, c.close_reason,
+                cr.status AS classification_review_status,
+                cr.requested_at AS classification_review_requested_at,
+                cr.original_category AS classification_review_original_category,
+                cr.corrected_category AS classification_review_corrected_category,
+                cr.corrected_at AS classification_review_corrected_at
+           FROM complaints c
+           LEFT JOIN classification_reviews cr ON cr.complaint_id = c.complaint_id
+          WHERE c.submitted_by = ?
+          ORDER BY c.created_at DESC"
     );
     $stmt->bind_param('i', $uid);
     $stmt->execute();
@@ -230,6 +266,119 @@ if ($action === 'my_complaints') {
     $syncStamp = getResidentComplaintSyncStamp($db, $uid);
     $db->close();
     out(true, ['complaints' => $list, 'sync_stamp' => $syncStamp]);
+}
+
+/* ════════════════════════════════════════════════════
+   POST ?action=request_classification_review
+   Resident can flag the system-generated category for human review.
+   The complaint remains filed and keeps its current category until an
+   authorized barangay administrator reviews it.
+════════════════════════════════════════════════════ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'request_classification_review') {
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $complaintId = trim((string)($input['complaint_id'] ?? ''));
+
+    if ($complaintId === '') {
+        out(false, ['error' => 'Complaint number is required.'], 422);
+    }
+
+    $stmt = $db->prepare(
+        "SELECT complaint_id, category, barangay_id
+           FROM complaints
+          WHERE complaint_id = ? AND submitted_by = ?
+          LIMIT 1"
+    );
+    $stmt->bind_param('si', $complaintId, $uid);
+    $stmt->execute();
+    $complaint = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$complaint) {
+        out(false, ['error' => 'Complaint not found in your account.'], 404);
+    }
+
+    $currentCategory = (string)($complaint['category'] ?? 'Unclassified');
+    $targetBarangayId = (int)($complaint['barangay_id'] ?? $barangay_id);
+    $officialClock = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
+    $officialNow = $officialClock->format('Y-m-d H:i:s');
+
+    $existingStmt = $db->prepare(
+        "SELECT status FROM classification_reviews WHERE complaint_id = ? LIMIT 1"
+    );
+    $existingStmt->bind_param('s', $complaintId);
+    $existingStmt->execute();
+    $existing = $existingStmt->get_result()->fetch_assoc();
+    $existingStmt->close();
+
+    if (($existing['status'] ?? '') === 'pending') {
+        $db->close();
+        out(true, ['already_pending' => true]);
+    }
+
+    $reviewStmt = $db->prepare(
+        "INSERT INTO classification_reviews
+            (complaint_id, barangay_id, resident_id, original_category,
+             requested_at, status, corrected_category, corrected_by,
+             corrected_by_name, corrected_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, ?, ?)
+         ON DUPLICATE KEY UPDATE
+             barangay_id = VALUES(barangay_id),
+             resident_id = VALUES(resident_id),
+             original_category = VALUES(original_category),
+             requested_at = VALUES(requested_at),
+             status = 'pending',
+             corrected_category = NULL,
+             corrected_by = NULL,
+             corrected_by_name = NULL,
+             corrected_at = NULL,
+             updated_at = VALUES(updated_at)"
+    );
+    $reviewStmt->bind_param(
+        'siissss',
+        $complaintId,
+        $targetBarangayId,
+        $uid,
+        $currentCategory,
+        $officialNow,
+        $officialNow,
+        $officialNow
+    );
+
+    if (!$reviewStmt->execute()) {
+        $err = $reviewStmt->error;
+        $reviewStmt->close();
+        out(false, ['error' => 'Could not request classification review: ' . $err], 500);
+    }
+    $reviewStmt->close();
+
+    $notifMessage = 'Classification review requested — ' . $complaintId . ' · Current category: ' . $currentCategory;
+    $notifTime = $officialClock->format('h:i A');
+    $notifStmt = $db->prepare(
+        "INSERT INTO notifications (msg, type, time, created_at, barangay_id, is_read)
+         VALUES (?, 'info', ?, ?, ?, 0)"
+    );
+    if ($notifStmt) {
+        $notifStmt->bind_param('sssi', $notifMessage, $notifTime, $officialNow, $targetBarangayId);
+        $notifStmt->execute();
+        $notifStmt->close();
+    }
+
+    $residentName = (string)($user['name'] ?? 'Resident');
+    $logStmt = $db->prepare(
+        "INSERT INTO activity_log
+            (user_id, user_name, barangay_id, action, detail, ip_address, created_at)
+         VALUES (?, ?, ?, 'classification_review_requested', ?, ?, ?)"
+    );
+    if ($logStmt) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $detail = 'Resident requested classification review for ' . $complaintId . ' [current:' . $currentCategory . ']';
+        $logStmt->bind_param('isisss', $uid, $residentName, $targetBarangayId, $detail, $ip, $officialNow);
+        $logStmt->execute();
+        $logStmt->close();
+    }
+
+    $db->close();
+    out(true, ['requested_at' => $officialNow]);
 }
 
 /* ════════════════════════════════════════════════════

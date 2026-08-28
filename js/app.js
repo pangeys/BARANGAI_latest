@@ -283,10 +283,22 @@ async function syncDashboardFromServer(force = false) {
     const detailWasOpen = !!(detailScreen && detailScreen.classList.contains('active'));
     const detailId = detailWasOpen ? _currentDetailComplaintId : null;
 
+    const pendingBefore = new Set(
+      _allComplaints
+        .filter(c => String(c.classificationReviewStatus || '').toLowerCase() === 'pending')
+        .map(c => c.id)
+    );
+
     const loaded = await loadFromDB({ preserveOnError: true });
     if (!loaded) return;
 
     _lastLiveSyncStamp = stamp;
+
+    const newlyPending = _allComplaints.find(c =>
+      String(c.classificationReviewStatus || '').toLowerCase() === 'pending' &&
+      !pendingBefore.has(c.id)
+    );
+    if (newlyPending) showClassificationReviewToast(newlyPending);
 
     if (detailId && complaints.some(c => c.id === detailId)) {
       await viewComplaint(detailId);
@@ -296,6 +308,31 @@ async function syncDashboardFromServer(force = false) {
   } finally {
     _liveSyncBusy = false;
   }
+}
+
+function showClassificationReviewToast(complaint) {
+  if (!complaint || !complaint.id) return;
+
+  let toast = document.getElementById('classification-review-admin-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'classification-review-admin-toast';
+    toast.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:10050;width:min(390px,calc(100vw - 32px));background:#fff;border:1px solid #f2d18a;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.18);padding:14px;';
+    document.body.appendChild(toast);
+  }
+
+  toast.innerHTML =
+    '<div style="display:flex;gap:10px;align-items:flex-start;">' +
+      '<div style="font-size:20px;line-height:1;">⚠️</div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:13px;font-weight:800;color:#6e4a00;">Classification Review Requested</div>' +
+        '<div style="font-size:11px;color:#6f6250;line-height:1.55;margin-top:4px;">Complaint <b>' + _escHtml(complaint.id) + '</b> was flagged by the resident for category review.</div>' +
+        '<div style="display:flex;gap:8px;margin-top:10px;">' +
+          '<button class="btn btn-primary btn-sm" onclick="viewComplaint(\'' + _escHtml(complaint.id) + '\');document.getElementById(\'classification-review-admin-toast\').remove();">Review Complaint</button>' +
+          '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'classification-review-admin-toast\').remove();">Dismiss</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 }
 
 function startDashboardLiveSync() {
@@ -872,9 +909,12 @@ async function viewComplaint(id) {
   if (ptEl) ptEl.textContent = id + ' – ' + c.category;
   const badgeRow = document.getElementById('detail-badge-row');
   if (badgeRow) badgeRow.innerHTML =
-    '<span class="badge b-blue">' + c.category + '</span>' +
-    '<span class="badge ' + c.pb + '">' + c.priority + ' Priority</span>' +
-    '<span class="badge ' + c.sb + '">' + c.status + '</span>';
+    '<span class="badge b-blue">' + _escHtml(c.category) + '</span>' +
+    '<span class="badge ' + c.pb + '">' + _escHtml(c.priority) + ' Priority</span>' +
+    '<span class="badge ' + c.sb + '">' + _escHtml(c.status) + '</span>' +
+    (String(c.classificationReviewStatus || '').toLowerCase() === 'pending'
+      ? '<span class="badge b-amber">Classification Review Requested</span>'
+      : '');
   const resolveBtn = document.getElementById('detail-resolve-btn');
   if (resolveBtn) {
     if (c.status !== 'Resolved') {
@@ -896,6 +936,29 @@ async function viewComplaint(id) {
       closeBtn.onclick = () => openCloseModal(id);
     }
   }
+  const reviewBanner = document.getElementById('detail-classification-review-banner');
+  if (reviewBanner) {
+    const reviewStatus = String(c.classificationReviewStatus || '').toLowerCase();
+    if (reviewStatus === 'pending') {
+      reviewBanner.style.display = '';
+      reviewBanner.innerHTML = '<b>Resident requested a classification review.</b><br>Review the complaint and use <b>Edit Classification</b> if the current category does not match the concern.';
+    } else if (reviewStatus === 'resolved') {
+      reviewBanner.style.display = '';
+      reviewBanner.style.background = '#eef8f1';
+      reviewBanner.style.borderColor = '#b9dfc4';
+      reviewBanner.style.color = '#24623a';
+      const who = c.classificationReviewCorrectedByName ? ' by ' + _escHtml(c.classificationReviewCorrectedByName) : '';
+      const when = c.classificationReviewCorrectedAt ? ' on ' + _escHtml(formatBarangAIDateTime(c.classificationReviewCorrectedAt)) : '';
+      reviewBanner.innerHTML = '<b>Classification reviewed' + who + '.</b>' + when;
+    } else {
+      reviewBanner.style.display = 'none';
+      reviewBanner.style.background = '#fff8e8';
+      reviewBanner.style.borderColor = '#f2d18a';
+      reviewBanner.style.color = '#7a5200';
+      reviewBanner.textContent = '';
+    }
+  }
+
   await loadComplaintStatusHistory(id, c);
 
   const fieldMap = {
@@ -917,6 +980,98 @@ async function viewComplaint(id) {
   await loadNotes(id);
   showScreen('complaint-detail', null);
   document.getElementById('topbar-title').textContent = id + ' – ' + c.category;
+}
+
+/* ══════════════════════════════════════════════════════
+   CLASSIFICATION REVIEW / CORRECTION
+══════════════════════════════════════════════════════ */
+function openClassificationModal(id) {
+  const c = complaints.find(x => x.id === id);
+  if (!c) return;
+
+  _currentDetailComplaintId = id;
+  const idEl = document.getElementById('classification-modal-id');
+  const currentEl = document.getElementById('classification-current');
+  const selectEl = document.getElementById('classification-category');
+  const noteEl = document.getElementById('classification-review-note');
+  const msgEl = document.getElementById('classification-modal-msg');
+
+  if (idEl) idEl.textContent = id;
+  if (currentEl) currentEl.textContent = c.category || 'Unclassified';
+  if (selectEl) selectEl.value = CATEGORIES.includes(c.category) ? c.category : CATEGORIES[0];
+  if (msgEl) msgEl.textContent = '';
+
+  if (noteEl) {
+    if (String(c.classificationReviewStatus || '').toLowerCase() === 'pending') {
+      noteEl.style.display = '';
+      noteEl.innerHTML = '<b>Resident review request:</b> The resident indicated that the system classification may not match the complaint.';
+    } else {
+      noteEl.style.display = 'none';
+      noteEl.textContent = '';
+    }
+  }
+
+  if (typeof initFuzzyAHP === 'function') initFuzzyAHP();
+  showModal('classificationModal');
+}
+
+async function saveClassificationCorrection() {
+  const id = _currentDetailComplaintId;
+  const c = complaints.find(x => x.id === id);
+  if (!c) return;
+
+  const selectEl = document.getElementById('classification-category');
+  const msgEl = document.getElementById('classification-modal-msg');
+  const btn = document.getElementById('classification-save-btn');
+  const newCategory = selectEl ? selectEl.value : '';
+
+  if (!CATEGORIES.includes(newCategory)) {
+    if (msgEl) { msgEl.style.color = 'var(--red)'; msgEl.textContent = 'Select one of the six KP categories.'; }
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (msgEl) msgEl.textContent = '';
+
+  try {
+    if (typeof initFuzzyAHP === 'function') await initFuzzyAHP();
+    const ahp = computeAHPScore(newCategory, c.affected, c.description);
+
+    const res = await fetch(API_URL, {
+      method:'PUT',
+      credentials:'include',
+      cache:'no-store',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        action:'update_classification',
+        complaint_id:id,
+        category:newCategory,
+        score:ahp.score
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Could not update classification.');
+
+    c.category = data.category;
+    c.score = String(data.score);
+    c.priority = data.priority;
+    c.pb = data.priority_badge;
+    c.classificationReviewStatus = 'resolved';
+    c.classificationReviewCorrectedCategory = data.category;
+    c.classificationReviewCorrectedAt = data.corrected_at || null;
+    c.classificationReviewCorrectedByName = data.corrected_by_name || '';
+
+    closeModal('classificationModal');
+    renderAll();
+    await viewComplaint(id);
+  } catch (e) {
+    if (msgEl) {
+      msgEl.style.color = 'var(--red)';
+      msgEl.textContent = e.message || 'Could not update classification.';
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Classification'; }
+  }
 }
 
 /* ══════════════════════════════════════════════════════

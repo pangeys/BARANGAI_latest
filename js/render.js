@@ -163,7 +163,10 @@ function renderDashboardStats() {
       '<td class="mono">' + c.id + '</td>' +
       '<td class="exact-time-cell">' + formatBarangAIDateTime(c.createdAt) + '</td>' +
       '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + mask(c.description) + '</td>' +
-      '<td><span class="badge b-blue">' + c.category + '</span></td>' +
+      '<td><span class="badge b-blue">' + c.category + '</span>' +
+        (String(c.classificationReviewStatus || '').toLowerCase() === 'pending'
+          ? '<div style="margin-top:4px;"><span class="badge b-amber" style="font-size:8px;">Review Requested</span></div>'
+          : '') + '</td>' +
       '<td><span class="badge ' + c.pb + '">' + c.priority + '</span></td>' +
       '<td><span class="badge ' + c.sb + '">' + c.status + '</span></td>' +
       '<td>' + btn + '</td></tr>';
@@ -529,18 +532,20 @@ function renderDetailNlpBars(complaint) {
   if (!barsEl) return;
   const result = classifyDescription(complaint.description || '');
   barsEl.innerHTML = CATEGORIES.map(cat => {
-    const pct = cat === complaint.category
-      ? (complaint.confidence || result.scores[cat] || 0)
-      : (result.scores[cat] ?? 0);
+    const pct = result.scores[cat] ?? 0;
+    const isModelTop = cat === result.cat;
     return '<div class="conf-bar">' +
-      '<span class="conf-label">' + cat + (cat === complaint.category ? ' ★' : '') + '</span>' +
+      '<span class="conf-label">' + cat + (isModelTop ? ' ★' : '') + '</span>' +
       '<div class="conf-track"><div class="conf-fill" style="width:' + pct + '%;background:' +
-      (cat === complaint.category ? 'var(--blue)' : 'var(--sky)') + '"></div></div>' +
+      (isModelTop ? 'var(--blue)' : 'var(--sky)') + '"></div></div>' +
       '<span class="conf-pct">' + pct + '%</span></div>';
   }).join('');
 
   const predEl = document.getElementById('nlp-predicted-label');
-  if (predEl) predEl.textContent = complaint.category;
+  if (predEl) {
+    const current = complaint.category || 'Unclassified';
+    predEl.textContent = result.cat + (current !== result.cat ? ' · Current validated category: ' + current : '');
+  }
 }
 
 function renderDetailAhp(complaint) {
@@ -589,8 +594,24 @@ function renderDetailTimeline(complaint) {
     dot: 'done',
     label: 'AI Classification & Priority Computation',
     meta: formatBarangAIDateTime(filedAt),
-    detail: complaint.category + ' · ' + (complaint.confidence || '—') + '% relative SVM score · ' + complaint.priority + ' priority'
+    detail: (complaint.classificationReviewOriginalCategory || complaint.category) + ' · ' + (complaint.confidence || '—') + '% relative SVM score · initial automated result'
   });
+
+  if (String(complaint.classificationReviewStatus || '').toLowerCase() === 'pending') {
+    events.push({
+      dot: 'pend',
+      label: 'Classification Review Requested',
+      meta: complaint.classificationReviewRequestedAt ? formatBarangAIDateTime(complaint.classificationReviewRequestedAt) : 'Pending review',
+      detail: 'Resident requested barangay verification of the system-generated category'
+    });
+  } else if (String(complaint.classificationReviewStatus || '').toLowerCase() === 'resolved') {
+    events.push({
+      dot: 'done',
+      label: 'Classification Reviewed',
+      meta: complaint.classificationReviewCorrectedAt ? formatBarangAIDateTime(complaint.classificationReviewCorrectedAt) : 'Reviewed',
+      detail: 'Current category: ' + complaint.category + (complaint.classificationReviewCorrectedByName ? ' · Reviewed by ' + complaint.classificationReviewCorrectedByName : '')
+    });
+  }
 
   if (complaint.officer && complaint.officer !== '—') {
     events.push({
