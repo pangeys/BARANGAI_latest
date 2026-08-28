@@ -2,12 +2,21 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>BarangAI – Barangay Intelligent Case Tracking System</title>
-<link rel="stylesheet" href="styles.css?v=20260828-timeline1">
-<link rel="stylesheet" href="mobile-responsive.css?v=20260828-timeline1">   <!-- ADD THIS LINE -->
+<link rel="stylesheet" href="styles.css?v=20260828-mobileblank1">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260828-mobileblank1">   <!-- ADD THIS LINE -->
 </head>
 <body>
+<div id="admin-boot-guard" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#f4f8fc;font-family:Arial,sans-serif;color:#15375f;">
+  <div style="text-align:center;padding:24px;">
+    <div style="font-size:18px;font-weight:700;margin-bottom:7px;">Loading BarangAI…</div>
+    <div style="font-size:12px;color:#71839a;">Verifying your administrator session.</div>
+  </div>
+</div>
 
 
 
@@ -1994,12 +2003,21 @@
 <script src="js/classifier.js?v=20260814-split2"></script>
 <script src="js/dataset.js"></script>
 <script src="js/password-rules.js"></script>
-<script src="js/render.js?v=20260828-timeline1"></script>
-<script src="js/app.js?v=20260828-timeline1"></script>
-<script src="js/mobile.js"></script>
+<script src="js/render.js?v=20260828-mobileblank1"></script>
+<script src="js/app.js?v=20260828-mobileblank1"></script>
+<script src="js/mobile.js?v=20260828-mobileblank1"></script>
 
 <script>
 (async function(){
+
+  // If iOS/Safari ever restores a stale hidden shell or the session request
+  // stalls, return to login instead of leaving an unusable blank page.
+  const adminBootWatchdog = setTimeout(function(){
+    const shell = document.getElementById('shell');
+    if (shell && getComputedStyle(shell).display === 'none') {
+      location.replace('login.html?notice=session_expired&_=' + Date.now());
+    }
+  }, 12000);
 
   let user = null;
 
@@ -2369,7 +2387,17 @@
     }
   }
 
-  shell.style.display = '';
+  clearTimeout(adminBootWatchdog);
+
+  // Explicitly reveal the authenticated shell. Using `flex` instead of an
+  // empty inline value makes the result deterministic on iOS Safari.
+  shell.style.display = 'flex';
+
+  const bootGuard = document.getElementById('admin-boot-guard');
+  if (bootGuard) bootGuard.remove();
+
+  // Mobile helpers (FAB/sidebar) must initialize only after authentication.
+  document.dispatchEvent(new CustomEvent('barangai:admin-ready'));
 
 })();
 /*
@@ -3046,7 +3074,8 @@ function escapeSaHtml(value){
 
 window.addEventListener('pageshow', function(event) {
   if (event.persisted) {
-    location.reload();
+    // Never revive a previously hidden/auth-transition DOM from iOS BFCache.
+    location.replace('index.html?_restore=' + Date.now());
   }
 });
 

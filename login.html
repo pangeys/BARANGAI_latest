@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BarangAI – Sign In</title>
-<link rel="stylesheet" href="styles.css?v=20260828-loginui1">
-<link rel="stylesheet" href="mobile-responsive.css?v=20260828-loginui1">   <!-- ADD THIS LINE -->
+<link rel="stylesheet" href="styles.css?v=20260828-mobileblank1">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260828-mobileblank1">   <!-- ADD THIS LINE -->
 <style>
   .auth-switch{text-align:center;margin-top:14px;font-size:12px;color:var(--text3)}
   .auth-switch a{color:var(--blue);cursor:pointer;font-weight:600;text-decoration:none}
@@ -659,7 +659,10 @@ function resetSignIn(){
 }
 
 function go(){
-  location.replace(_redirectTo);
+  // Force a fresh portal document after login/2FA. This prevents iOS Safari
+  // from restoring an old hidden admin shell from its back/forward cache.
+  const sep = _redirectTo.includes('?') ? '&' : '?';
+  location.replace(_redirectTo + sep + '_fresh=' + Date.now());
 }
 
 function continueAfterAuthentication(data){

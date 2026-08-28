@@ -137,9 +137,25 @@
   /* ══════════════════════════════════════════════════════
      FLOATING ACTION BUTTON
   ══════════════════════════════════════════════════════ */
+  function adminShellIsReady() {
+    const shell = $('shell');
+    return !!(
+      shell &&
+      window.CURRENT_USER &&
+      (window.CURRENT_USER.role === 'admin' || window.CURRENT_USER.role === 'super_admin') &&
+      window.getComputedStyle(shell).display !== 'none'
+    );
+  }
+
   function initFAB() {
-    if (!$('shell')) return;
     let fab = $('mobile-fab');
+
+    // Never leave a floating + button on top of a hidden/unauthenticated shell.
+    if (!adminShellIsReady()) {
+      if (fab) fab.remove();
+      return;
+    }
+
     if (!fab) {
       fab = document.createElement('button');
       fab.id = 'mobile-fab';
@@ -147,10 +163,11 @@
       fab.setAttribute('aria-label', 'Submit new complaint');
       fab.textContent = '+';
       document.body.appendChild(fab);
+
+      fab.addEventListener('click', function () {
+        if (typeof showModal === 'function') showModal('submitModal');
+      });
     }
-    fab.addEventListener('click', function () {
-      if (typeof showModal === 'function') showModal('submitModal');
-    });
   }
 
   /* ══════════════════════════════════════════════════════
@@ -242,13 +259,19 @@
     window.addEventListener('orientationchange', function () { setTimeout(set, 250); });
   }
 
+  // index.html dispatches this only after the authenticated shell is visible.
+  document.addEventListener('barangai:admin-ready', function () {
+    initFAB();
+    if (isMobile()) fixInputs();
+  });
+
   /* ══════════════════════════════════════════════════════
      BOOT
   ══════════════════════════════════════════════════════ */
   function init() {
     fixViewportHeight();
     initSidebarDrawer();
-    initFAB();
+    if (adminShellIsReady()) initFAB();
     initModalSwipeClose();
     initTableScrollHints();
     patchShowScreen();
