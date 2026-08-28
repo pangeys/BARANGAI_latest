@@ -123,19 +123,22 @@ function logStatusActivity(
                 barangay_id,
                 action,
                 detail,
-                ip_address
+                ip_address,
+                created_at
             )
-         VALUES (?, ?, ?, ?, ?, ?)'
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
 
+    $nowPht = date('Y-m-d H:i:s');
     $stmt->bind_param(
-        'isisss',
+        'isissss',
         $uid,
         $name,
         $barangayId,
         $action,
         $detail,
-        $ip
+        $ip,
+        $nowPht
     );
 
     $stmt->execute();
@@ -143,17 +146,18 @@ function logStatusActivity(
 }
 
 
-function logComplaintStatusHistory($db, $complaintId, $barangayId, $status, $user) {
+function logComplaintStatusHistory($db, $complaintId, $barangayId, $status, $user, $createdAt = null) {
     $uid = (int)($user['id'] ?? 0);
     $name = (string)($user['name'] ?? 'Unknown');
     $source = 'protected_status_endpoint';
+    $officialTime = $createdAt ?: date('Y-m-d H:i:s');
     $stmt = $db->prepare(
         'INSERT INTO complaint_status_history
-            (complaint_id, barangay_id, status, changed_by, changed_by_name, source)
-         VALUES (?, ?, ?, ?, ?, ?)'
+            (complaint_id, barangay_id, status, changed_by, changed_by_name, source, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
     if (!$stmt) return;
-    $stmt->bind_param('sisiss', $complaintId, $barangayId, $status, $uid, $name, $source);
+    $stmt->bind_param('sisisss', $complaintId, $barangayId, $status, $uid, $name, $source, $officialTime);
     $stmt->execute();
     $stmt->close();
 }
@@ -237,7 +241,8 @@ if (
 /*
  * Server-authoritative Philippine timestamp. Browser time is ignored.
  */
-$resolvedAt = $status === 'Resolved' ? date('Y-m-d H:i:s') : null;
+$changedAt = date('Y-m-d H:i:s');
+$resolvedAt = $status === 'Resolved' ? $changedAt : null;
 
 
 /*
@@ -428,10 +433,9 @@ logComplaintStatusHistory(
     $complaintId,
     $targetBarangayId,
     $status,
-    $user
+    $user,
+    $changedAt
 );
-
-$changedAt = date('Y-m-d H:i:s');
 $db->close();
 
 respond([

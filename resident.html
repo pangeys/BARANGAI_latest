@@ -742,6 +742,18 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
     if (data.ok) {
       document.getElementById('successRef').textContent = data.complaint_no;
       document.getElementById('successCat').textContent = category || 'Unclassified';
+
+      // A successful submission must always leave a fresh form behind.
+      // This prevents old incident details from reappearing when the resident
+      // opens My Complaints and then returns to Submit a Complaint.
+      ['f_date','f_time','f_location','f_desc','f_name','f_affected','f_website']
+        .forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+      resetButton();
+      clearMsg();
+
       document.getElementById('formView').style.display    = 'none';
       document.getElementById('successView').style.display = '';
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -762,7 +774,7 @@ function resetButton(){
 }
 
 function resetForm(){
-  ['f_date','f_time','f_location','f_desc','f_name','f_affected']
+  ['f_date','f_time','f_location','f_desc','f_name','f_affected','f_website']
     .forEach(id => document.getElementById(id).value = '');
   document.getElementById('successView').style.display = 'none';
   document.getElementById('formView').style.display    = '';

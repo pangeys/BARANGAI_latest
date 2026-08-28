@@ -37,11 +37,12 @@ function isAdministrativeUser($user) {
 
 function logActivity($conn, $userId, $userName, $barangayId, $action, $detail) {
     $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
+    $nowPht = date('Y-m-d H:i:s');
     $stmt = $conn->prepare(
-        "INSERT INTO activity_log (user_id, user_name, barangay_id, action, detail, ip_address)
-         VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO activity_log (user_id, user_name, barangay_id, action, detail, ip_address, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
-    $stmt->bind_param('isisss', $userId, $userName, $barangayId, $action, $detail, $ip);
+    $stmt->bind_param('isissss', $userId, $userName, $barangayId, $action, $detail, $ip, $nowPht);
     $stmt->execute();
     $stmt->close();
 }
@@ -54,24 +55,15 @@ function logActivity($conn, $userId, $userName, $barangayId, $action, $detail) {
 function logComplaintStatusHistory($conn, $complaintId, $barangayId, $status, $userId = null, $userName = null, $source = 'admin', $createdAt = null) {
     $changedBy = $userId === null ? null : (int)$userId;
     $changedName = $userName === null ? null : (string)$userName;
+    $officialTime = $createdAt ?: date('Y-m-d H:i:s');
 
-    if ($createdAt) {
-        $stmt = $conn->prepare(
-            "INSERT INTO complaint_status_history
-                (complaint_id, barangay_id, status, changed_by, changed_by_name, source, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
-        );
-        if (!$stmt) return false;
-        $stmt->bind_param('sisisss', $complaintId, $barangayId, $status, $changedBy, $changedName, $source, $createdAt);
-    } else {
-        $stmt = $conn->prepare(
-            "INSERT INTO complaint_status_history
-                (complaint_id, barangay_id, status, changed_by, changed_by_name, source)
-             VALUES (?, ?, ?, ?, ?, ?)"
-        );
-        if (!$stmt) return false;
-        $stmt->bind_param('sisiss', $complaintId, $barangayId, $status, $changedBy, $changedName, $source);
-    }
+    $stmt = $conn->prepare(
+        "INSERT INTO complaint_status_history
+            (complaint_id, barangay_id, status, changed_by, changed_by_name, source, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)"
+    );
+    if (!$stmt) return false;
+    $stmt->bind_param('sisisss', $complaintId, $barangayId, $status, $changedBy, $changedName, $source, $officialTime);
 
     $ok = $stmt->execute();
     $stmt->close();
@@ -857,9 +849,10 @@ if ($method === 'POST' && $action === 'add_complaint') {
     }
 
     $bid = $barangay_id;
-    $sql = "INSERT INTO complaints (complaint_id, date_filed, description, location, incident_date, incident_time, complainant, affected, category, confidence, score, priority, priority_badge, officer, status, status_badge, barangay_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $createdAt = date('Y-m-d H:i:s');
+    $sql = "INSERT INTO complaints (complaint_id, date_filed, description, location, incident_date, incident_time, complainant, affected, category, confidence, score, priority, priority_badge, officer, status, status_badge, barangay_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param('sssssssisissssssi', $cid, $dateFiled, $desc, $loc, $incDate, $incTime, $comp, $affected, $cat, $conf, $score, $priority, $pb, $officer, $status, $sb, $bid);
+    $stmt->bind_param('sssssssisissssssis', $cid, $dateFiled, $desc, $loc, $incDate, $incTime, $comp, $affected, $cat, $conf, $score, $priority, $pb, $officer, $status, $sb, $bid, $createdAt);
     $ok = $stmt->execute();
     $stmt->close();
     if ($ok) {
@@ -930,14 +923,15 @@ if ($method === 'PUT' && $action === 'assign_officer') {
 
         $stmt = $conn->prepare(
             "UPDATE complaints
-             SET officer = ?, officer_id = ?, officer_assigned_at = NOW()
+             SET officer = ?, officer_id = ?, officer_assigned_at = ?
              WHERE complaint_id = ?
                AND barangay_id = ?"
         );
         $stmt->bind_param(
-            'sisi',
+            'sissi',
             $officerName,
             $officerId,
+            $assignedAt,
             $complaintId,
             $barangay_id
         );
@@ -983,13 +977,14 @@ if ($method === 'PUT' && $action === 'assign_officer') {
 
         $stmt = $conn->prepare(
             "UPDATE complaints
-             SET officer = ?, officer_id = ?, officer_assigned_at = NOW()
+             SET officer = ?, officer_id = ?, officer_assigned_at = ?
              WHERE complaint_id = ?"
         );
         $stmt->bind_param(
-            'sis',
+            'siss',
             $officerName,
             $officerId,
+            $assignedAt,
             $complaintId
         );
     }

@@ -246,11 +246,16 @@ if (!$incident_date || !$location || !$description)
 $uid = (int)$user['id'];
 
 // 1. Daily cap: max 3 complaints per resident per rolling 24 hours
+$officialClock = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
+$officialNow   = $officialClock->format('Y-m-d H:i:s');
+$dayCutoff     = $officialClock->modify('-24 hours')->format('Y-m-d H:i:s');
+$duplicateCutoff = $officialClock->modify('-10 minutes')->format('Y-m-d H:i:s');
+
 $capStmt = $db->prepare(
     'SELECT COUNT(*) FROM complaints
-      WHERE submitted_by = ? AND created_at >= NOW() - INTERVAL 24 HOUR'
+      WHERE submitted_by = ? AND created_at >= ?'
 );
-$capStmt->bind_param('i', $uid);
+$capStmt->bind_param('is', $uid, $dayCutoff);
 $capStmt->execute();
 $recentCount = (int)$capStmt->get_result()->fetch_row()[0];
 $capStmt->close();
@@ -262,9 +267,9 @@ if ($recentCount >= 3)
 $dupStmt = $db->prepare(
     'SELECT COUNT(*) FROM complaints
       WHERE submitted_by = ? AND description = ?
-        AND created_at >= NOW() - INTERVAL 10 MINUTE'
+        AND created_at >= ?'
 );
-$dupStmt->bind_param('is', $uid, $description);
+$dupStmt->bind_param('iss', $uid, $description, $duplicateCutoff);
 $dupStmt->execute();
 $dupCount = (int)$dupStmt->get_result()->fetch_row()[0];
 $dupStmt->close();
@@ -272,24 +277,24 @@ $dupStmt->close();
 if ($dupCount > 0)
     out(false, ['error' => 'This looks like a complaint you already submitted a few minutes ago. Please check "My Complaints" before submitting again.'], 409);
 
-$year = date('Y');
+$year = $officialClock->format('Y');
 $cnt  = (int)$db->query("SELECT COUNT(*) FROM complaints WHERE submitted_by IS NOT NULL")->fetch_row()[0];
 $complaint_id = 'RES-' . $year . '-' . str_pad($cnt + 1, 5, '0', STR_PAD_LEFT);
-$date_filed   = date('Y-m-d');
+$date_filed   = $officialClock->format('Y-m-d');
 
 $stmt = $db->prepare('
     INSERT INTO complaints
         (complaint_id, date_filed, description, location,
          incident_date, incident_time, complainant, affected,
          category, confidence, score, priority, priority_badge,
-         officer, status, status_badge, barangay_id, submitted_by)
+         officer, status, status_badge, barangay_id, submitted_by, created_at)
     VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "—", "Open", "b-gray", ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "—", "Open", "b-gray", ?, ?, ?)
 ');
 
 // 15 ? marks: s×7, i×1, s×1, i×1, s×3, i×2
 $stmt->bind_param(
-    'sssssssisisssii',
+    'sssssssisisssiis',
     $complaint_id,
     $date_filed,
     $description,
@@ -304,7 +309,8 @@ $stmt->bind_param(
     $priority,
     $priority_badge,
     $barangay_id,
-    $uid
+    $uid,
+    $officialNow
 );
 
 if ($stmt->execute()) {
@@ -313,12 +319,12 @@ if ($stmt->execute()) {
     // Initial Open event: server timestamp is the official filed/progress time.
     $historyStmt = $db->prepare(
         "INSERT INTO complaint_status_history
-            (complaint_id, barangay_id, status, changed_by, changed_by_name, source)
-         VALUES (?, ?, 'Open', ?, ?, 'resident_submission')"
+            (complaint_id, barangay_id, status, changed_by, changed_by_name, source, created_at)
+         VALUES (?, ?, 'Open', ?, ?, 'resident_submission', ?)"
     );
     if ($historyStmt) {
         $residentName = (string)($user['name'] ?? 'Resident');
-        $historyStmt->bind_param('siis', $complaint_id, $barangay_id, $uid, $residentName);
+        $historyStmt->bind_param('siiss', $complaint_id, $barangay_id, $uid, $residentName, $officialNow);
         $historyStmt->execute();
         $historyStmt->close();
     }
