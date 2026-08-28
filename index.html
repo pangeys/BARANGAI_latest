@@ -3,25 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 <title>BarangAI – Barangay Intelligent Case Tracking System</title>
-<link rel="stylesheet" href="styles.css?v=20260828-iosshell2">
-<link rel="stylesheet" href="mobile-responsive.css?v=20260828-iosshell2">   <!-- ADD THIS LINE -->
+<link rel="stylesheet" href="styles.css?v=20260828-iosrender1">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260828-iosrender1">   <!-- ADD THIS LINE -->
 </head>
-<body>
-<div id="admin-boot-guard" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#f4f8fc;font-family:Arial,sans-serif;color:#15375f;">
-  <div style="text-align:center;padding:24px;">
-    <div style="font-size:18px;font-weight:700;margin-bottom:7px;">Loading BarangAI…</div>
-    <div style="font-size:12px;color:#71839a;">Verifying your administrator session.</div>
-  </div>
-</div>
+<body class="admin-page">
 
 
 
 <!-- MAIN SHELL -->
-<div id="shell" style="visibility:hidden;opacity:0;">
+<div id="shell" style="visibility:hidden;opacity:0;pointer-events:none;">
   <!-- SIDEBAR -->
   <div id="sidebar">
     <div id="sidebar-brand">
@@ -2003,21 +1994,12 @@
 <script src="js/classifier.js?v=20260814-split2"></script>
 <script src="js/dataset.js"></script>
 <script src="js/password-rules.js"></script>
-<script src="js/render.js?v=20260828-iosshell2"></script>
-<script src="js/app.js?v=20260828-iosshell2"></script>
-<script src="js/mobile.js?v=20260828-iosshell2"></script>
+<script src="js/render.js?v=20260828-timeline1"></script>
+<script src="js/app.js?v=20260828-timeline1"></script>
+<script src="js/mobile.js"></script>
 
 <script>
 (async function(){
-
-  // If iOS/Safari ever restores a stale hidden shell or the session request
-  // stalls, return to login instead of leaving an unusable blank page.
-  const adminBootWatchdog = setTimeout(function(){
-    const shell = document.getElementById('shell');
-    if (shell && (getComputedStyle(shell).visibility === 'hidden' || getComputedStyle(shell).opacity === '0')) {
-      location.replace('login.html?notice=session_expired&_=' + Date.now());
-    }
-  }, 12000);
 
   let user = null;
 
@@ -2387,32 +2369,51 @@
     }
   }
 
-  clearTimeout(adminBootWatchdog);
-
-  // iOS Safari hard fix: keep the shell laid out from first paint and only
-  // reveal it after authentication. Safari can fail to re-layout a complex
-  // flex app correctly when its parent changes from display:none to flex.
-  shell.style.display = 'flex';
+  // iOS/Safari: the shell stays in layout from the first paint.
+  // Only its visibility is gated by authentication. This avoids Safari
+  // failing to repaint a complex flex tree after display:none is removed.
   shell.style.visibility = 'visible';
   shell.style.opacity = '1';
+  shell.style.pointerEvents = 'auto';
 
-  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
-    shell.style.position = 'fixed';
-    shell.style.inset = '0';
-    shell.style.width = '100%';
-    shell.style.height = '100dvh';
-    shell.style.maxWidth = '100%';
-    shell.style.overflow = 'hidden';
-    window.scrollTo(0, 0);
-    // Force Safari to commit one synchronous layout before helpers/FAB run.
-    void shell.offsetHeight;
+  // Always land on a real visible dashboard after authentication.
+  // Safari can restore stale class/scroll state from a previous page load.
+  document.querySelectorAll('.screen').forEach(function(screen){
+    screen.classList.remove('active');
+  });
+  const dashboardScreen = document.getElementById('screen-dashboard');
+  if (dashboardScreen) {
+    dashboardScreen.classList.add('active');
+    dashboardScreen.style.display = 'block';
   }
 
-  const bootGuard = document.getElementById('admin-boot-guard');
-  if (bootGuard) bootGuard.remove();
+  const topbar = document.getElementById('topbar');
+  const main = document.getElementById('main');
+  const content = document.getElementById('content');
+  if (main) {
+    main.style.display = 'flex';
+    main.style.visibility = 'visible';
+    main.style.opacity = '1';
+  }
+  if (topbar) {
+    topbar.style.display = 'flex';
+    topbar.style.visibility = 'visible';
+  }
+  if (content) {
+    content.style.display = 'block';
+    content.style.visibility = 'visible';
+    content.style.opacity = '1';
+    content.scrollTop = 0;
+  }
 
-  // Mobile helpers (FAB/sidebar) must initialize only after authentication.
-  document.dispatchEvent(new CustomEvent('barangai:admin-ready'));
+  // Force two paint/layout cycles before mobile helpers are allowed to add UI.
+  void shell.offsetHeight;
+  requestAnimationFrame(function(){
+    if (dashboardScreen) void dashboardScreen.offsetHeight;
+    requestAnimationFrame(function(){
+      document.dispatchEvent(new CustomEvent('barangai:admin-ready'));
+    });
+  });
 
 })();
 /*
@@ -3089,8 +3090,7 @@ function escapeSaHtml(value){
 
 window.addEventListener('pageshow', function(event) {
   if (event.persisted) {
-    // Never revive a previously hidden/auth-transition DOM from iOS BFCache.
-    location.replace('index.html?_restore=' + Date.now());
+    location.reload();
   }
 });
 
