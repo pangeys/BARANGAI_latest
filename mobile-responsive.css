@@ -1233,59 +1233,34 @@ video {
   body.resident-page .resident-hero p { max-width:100%; }
 }
 
-
 /* ═══════════════════════════════════════════════════════
-   BarangAI — Admin/Super Admin mobile drawer root fix
-   2026-08-28
-   The portal theme rules use `body.admin-mode #sidebar` and
-   `body.super-admin-mode #sidebar { position: relative; }` on desktop.
-   Those selectors are more specific than the older mobile `#sidebar`
-   rule and caused the drawer to stay in normal flex flow on phones,
-   pushing #main below the viewport.  These page+role-scoped rules
-   deliberately win on mobile while leaving desktop presentation intact.
+   MOBILE ADMIN/SUPER ADMIN ROOT LAYOUT FIX
+   Keep the drawer out of document flow on phones.
 ═══════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-  body.admin-page.admin-mode #sidebar,
-  body.admin-page.super-admin-mode #sidebar {
+  body.admin-mode #sidebar,
+  body.super-admin-mode #sidebar {
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
-    bottom: auto !important;
-    right: auto !important;
+    bottom: 0 !important;
     width: 260px !important;
     min-width: 260px !important;
-    height: 100vh !important;
     height: 100dvh !important;
     max-height: 100dvh !important;
+    transform: translateX(-100%) !important;
     z-index: 150 !important;
-    transform: translate3d(-100%, 0, 0) !important;
-    transition: transform .28s cubic-bezier(.4,0,.2,1) !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    -webkit-overflow-scrolling: touch;
   }
 
-  body.admin-page.admin-mode #sidebar.open,
-  body.admin-page.super-admin-mode #sidebar.open {
-    transform: translate3d(0, 0, 0) !important;
+  body.admin-mode #sidebar.open,
+  body.super-admin-mode #sidebar.open {
+    transform: translateX(0) !important;
   }
 
-  body.admin-page.admin-mode #main,
-  body.admin-page.super-admin-mode #main {
-    position: relative;
+  body.admin-mode #main,
+  body.super-admin-mode #main {
     width: 100% !important;
     min-width: 0 !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    margin: 0 !important;
-    flex: 1 1 auto !important;
-  }
-
-  body.admin-page.admin-mode #content,
-  body.admin-page.super-admin-mode #content {
-    min-height: 0 !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    -webkit-overflow-scrolling: touch;
+    margin-left: 0 !important;
   }
 }

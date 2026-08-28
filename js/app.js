@@ -550,10 +550,25 @@ const SCREEN_TITLES = {
 };
 
 function showScreen(id, navEl) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  // Remove both active classes and any stale inline display values left by
+  // previous Safari/mobile boot workarounds. Inline display:block would
+  // otherwise override .screen { display:none } and leave Dashboard visible.
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.remove('active');
+    s.style.removeProperty('display');
+  });
+
   const el = document.getElementById('screen-' + id);
-  if (el) el.classList.add('active');
-  document.getElementById('topbar-title').textContent = SCREEN_TITLES[id] || id;
+  if (el) {
+    el.style.removeProperty('display');
+    el.classList.add('active');
+  }
+
+  const topbarTitle = document.getElementById('topbar-title');
+  if (topbarTitle) topbarTitle.textContent = SCREEN_TITLES[id] || id;
+
+  const content = document.getElementById('content');
+  if (content) content.scrollTop = 0;
   if (navEl) {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     navEl.classList.add('active');

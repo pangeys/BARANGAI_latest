@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BarangAI – Barangay Intelligent Case Tracking System</title>
-<link rel="stylesheet" href="styles.css?v=20260828-mobile-rootfix1">
-<link rel="stylesheet" href="mobile-responsive.css?v=20260828-mobile-rootfix1">   <!-- ADD THIS LINE -->
+<link rel="stylesheet" href="styles.css?v=20260828-iosrender1">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260828-iosrender1">   <!-- ADD THIS LINE -->
 </head>
 <body class="admin-page">
 
@@ -1995,7 +1995,7 @@
 <script src="js/dataset.js"></script>
 <script src="js/password-rules.js"></script>
 <script src="js/render.js?v=20260828-timeline1"></script>
-<script src="js/app.js?v=20260828-timeline1"></script>
+<script src="js/app.js?v=20260828-navfix1"></script>
 <script src="js/mobile.js"></script>
 
 <script>
@@ -2377,14 +2377,16 @@
   shell.style.pointerEvents = 'auto';
 
   // Always land on a real visible dashboard after authentication.
-  // Safari can restore stale class/scroll state from a previous page load.
+  // Clear any legacy inline display overrides first. Screen visibility must
+  // be controlled only by the .screen / .screen.active CSS classes so that
+  // navigation can correctly switch away from Dashboard on desktop/mobile.
   document.querySelectorAll('.screen').forEach(function(screen){
+    screen.style.removeProperty('display');
     screen.classList.remove('active');
   });
   const dashboardScreen = document.getElementById('screen-dashboard');
   if (dashboardScreen) {
     dashboardScreen.classList.add('active');
-    dashboardScreen.style.display = 'block';
   }
 
   const topbar = document.getElementById('topbar');
