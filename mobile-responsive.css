@@ -1155,3 +1155,80 @@ video {
     -webkit-backdrop-filter: none;
   }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   FINAL PORTAL RESPONSIVE POLISH v2
+═══════════════════════════════════════════════════════════════ */
+@media (max-width: 1120px) {
+  #screen-dashboard .portal-hero-copy { width:68%; }
+  #screen-dashboard .portal-hero-art { width:42%; opacity:.80; }
+  .dashboard-grid { grid-template-columns:1fr !important; }
+  body.resident-page .resident-hero-inner { grid-template-columns:minmax(0,1fr) 390px; }
+  body.resident-page .resident-benefit small { display:none; }
+  body.resident-page .resident-form-grid { grid-template-columns:minmax(0,1.6fr) minmax(245px,.72fr); }
+}
+
+@media (max-width: 880px) {
+  #screen-dashboard .portal-hero { min-height:155px; }
+  #screen-dashboard .portal-hero-copy { width:100%;padding:22px; }
+  #screen-dashboard .portal-hero-art { width:50%;opacity:.25; }
+  #screen-dashboard .portal-hero .page-sub { max-width:70%; }
+  .portal-chip { background:rgba(255,255,255,.72); }
+  body.super-admin-mode .portal-chip { background:rgba(6,13,36,.78); }
+  .portal-stats.stats-grid { grid-template-columns:repeat(2,1fr) !important; }
+  body.resident-page .resident-hero-inner { min-height:220px;grid-template-columns:1fr;padding-top:28px;padding-bottom:30px; }
+  body.resident-page .resident-scene { position:absolute;right:0;top:0;bottom:0;width:52%;opacity:.18; }
+  body.resident-page .resident-hero-copy { max-width:620px; }
+  body.resident-page .resident-form-grid { grid-template-columns:1fr; }
+  body.resident-page .resident-tip-panel { min-height:230px;padding-bottom:20px; }
+  body.resident-page .tip-community-art { right:8px;left:auto;width:230px;opacity:.42; }
+  body.resident-page .tip-item { max-width:70%; }
+}
+
+@media (max-width: 640px) {
+  body.admin-mode #content,body.super-admin-mode #content { padding:14px 12px 24px !important; }
+  #screen-dashboard .portal-hero { border-radius:15px;min-height:175px; }
+  #screen-dashboard .portal-hero-copy { padding:20px 16px; }
+  #screen-dashboard .portal-hero-art { width:72%;opacity:.13; }
+  #screen-dashboard .portal-hero .page-title { font-size:22px; }
+  #screen-dashboard .portal-hero .page-sub { max-width:100%;font-size:11px; }
+  .portal-feature-row { gap:6px;margin-top:12px; }
+  .portal-chip { padding:5px 7px;font-size:9px; }
+  .portal-stats.stats-grid { grid-template-columns:1fr 1fr !important;gap:9px !important; }
+  .portal-stats .stat-card { min-height:91px;padding:12px;gap:9px; }
+  .stat-icon { width:40px;height:40px;flex-basis:40px;font-size:15px; }
+  .portal-stats .stat-value { font-size:23px; }
+  .stat-watermark { display:none; }
+
+  body.resident-page .res-header { height:58px;padding:0 13px; }
+  body.resident-page .res-user-info { display:none; }
+  body.resident-page .resident-hero-inner { min-height:210px;padding:24px 17px 30px; }
+  body.resident-page .resident-hero h1 { font-size:37px; }
+  body.resident-page .resident-hero p { font-size:12px;max-width:92%; }
+  body.resident-page .resident-benefits { display:grid;grid-template-columns:1fr;gap:6px;max-width:320px; }
+  body.resident-page .resident-benefit { padding:7px 9px; }
+  body.resident-page .resident-benefit small { display:block; }
+  body.resident-page .resident-scene { width:70%;opacity:.10; }
+  body.resident-page .resident-workspace { padding:0 13px 45px; }
+  body.resident-page .res-nav { transform:translateY(-13px); }
+  body.resident-page .res-nav-btn { min-height:45px;padding:12px 7px;font-size:11px; }
+  body.resident-page .res-nav-btn:first-child { border-radius:10px 0 0 10px; }
+  body.resident-page .res-nav-btn:last-child { border-radius:0 10px 10px 0; }
+  body.resident-page .res-welcome-icon { width:39px;height:39px;flex-basis:39px; }
+  body.resident-page .res-welcome-title { font-size:17px; }
+  body.resident-page .res-welcome-sub { font-size:11px;line-height:1.45; }
+  body.resident-page .resident-form-card .card-body { padding:15px; }
+  body.resident-page .resident-tip-panel { padding:17px 15px;min-height:0; }
+  body.resident-page .tip-item { max-width:100%; }
+  body.resident-page .tip-community-art { display:none; }
+  body.resident-page .frow { flex-direction:column;gap:0; }
+  body.resident-page .inp { font-size:12px; }
+}
+
+@media (max-width: 420px) {
+  .portal-stats.stats-grid { grid-template-columns:1fr !important; }
+  body.resident-page .res-pill { display:none; }
+  body.resident-page .resident-benefits { max-width:100%; }
+  body.resident-page .resident-hero p { max-width:100%; }
+}

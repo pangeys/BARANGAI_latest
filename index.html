@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BarangAI – Barangay Intelligent Case Tracking System</title>
-<link rel="stylesheet" href="styles.css?v=20260828-portals1">
-<link rel="stylesheet" href="mobile-responsive.css?v=20260828-portals1">   <!-- ADD THIS LINE -->
+<link rel="stylesheet" href="styles.css?v=20260828-portals2">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260828-portals2">   <!-- ADD THIS LINE -->
 </head>
 <body>
 
@@ -196,33 +196,101 @@
      DASHBOARD
 ═══════════════════════════════════════════════════ -->
 <div id="screen-dashboard" class="screen active">
-  <div class="page-header">
-    <div class="page-title">Dashboard</div>
-    <div class="page-sub">Welcome back, Administrator. Here's today's overview.</div>
-  </div>
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-label">Total Complaints</div>
-      <div class="stat-value" id="stat-total">0</div>
-      <div class="stat-delta">No complaints yet</div>
+  <section class="portal-hero" aria-label="Dashboard overview">
+    <div class="portal-hero-copy">
+      <div class="portal-eyebrow admin-only">Barangay Operations Center</div>
+      <div class="portal-eyebrow super-only">BarangAI System Command</div>
+      <div class="page-header">
+        <div class="page-title" id="dashboardGreeting">Dashboard</div>
+        <div class="page-sub" id="dashboardSub">Welcome back, Administrator. Here's today's overview.</div>
+      </div>
+
+      <div class="portal-feature-row admin-only">
+        <span class="portal-chip"><b>▦</b> Monitor &amp; manage</span>
+        <span class="portal-chip"><b>✓</b> Resolve issues faster</span>
+        <span class="portal-chip"><b>◈</b> Data-driven insights</span>
+      </div>
+
+      <div class="portal-feature-row super-only">
+        <span class="portal-chip"><i class="live-dot"></i> Real-time overview</span>
+        <span class="portal-chip"><b>✦</b> AI-powered insights</span>
+        <span class="portal-chip"><b>◎</b> 6 KP categories</span>
+      </div>
+    </div>
+
+    <div class="portal-hero-art admin-only" aria-hidden="true">
+      <div class="admin-sun"></div>
+      <div class="admin-cloud cloud-a"></div>
+      <div class="admin-cloud cloud-b"></div>
+      <div class="civic-hall">
+        <div class="hall-flag"></div>
+        <div class="hall-roof"></div>
+        <div class="hall-sign">BARANGAY HALL</div>
+        <div class="hall-body">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div class="hall-steps"></div>
+      </div>
+      <div class="admin-wave wave-a"></div>
+      <div class="admin-wave wave-b"></div>
+    </div>
+
+    <div class="portal-hero-art super-only" aria-hidden="true">
+      <div class="network-orbit orbit-a"></div>
+      <div class="network-orbit orbit-b"></div>
+      <div class="network-orbit orbit-c"></div>
+      <div class="command-globe">
+        <span class="globe-line gl1"></span>
+        <span class="globe-line gl2"></span>
+        <span class="globe-line gl3"></span>
+      </div>
+      <span class="network-node n1"></span>
+      <span class="network-node n2"></span>
+      <span class="network-node n3"></span>
+      <span class="network-node n4"></span>
+      <span class="network-node n5"></span>
+    </div>
+  </section>
+
+  <div class="stats-grid portal-stats">
+    <div class="stat-card stat-total-card">
+      <div class="stat-icon blue">📋</div>
+      <div class="stat-copy">
+        <div class="stat-label">Total Complaints</div>
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-delta">No complaints yet</div>
+      </div>
+      <div class="stat-watermark">▥</div>
     </div>
     <div class="stat-card amber">
-      <div class="stat-label">Pending</div>
-      <div class="stat-value" id="stat-pending" style="color:var(--amber)">0</div>
-      <div class="stat-delta neg">Awaiting action</div>
+      <div class="stat-icon amber">◷</div>
+      <div class="stat-copy">
+        <div class="stat-label">Pending</div>
+        <div class="stat-value" id="stat-pending">0</div>
+        <div class="stat-delta neg">Awaiting action</div>
+      </div>
+      <div class="stat-watermark">⌛</div>
     </div>
     <div class="stat-card green">
-      <div class="stat-label">Resolved</div>
-      <div class="stat-value" id="stat-resolved" style="color:var(--green)">0</div>
-      <div class="stat-delta">—</div>
+      <div class="stat-icon green">✓</div>
+      <div class="stat-copy">
+        <div class="stat-label">Resolved</div>
+        <div class="stat-value" id="stat-resolved">0</div>
+        <div class="stat-delta">—</div>
+      </div>
+      <div class="stat-watermark">✪</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Avg. Response</div>
-      <div class="stat-value" id="stat-response">—</div>
-      <div class="stat-delta">No data yet</div>
+    <div class="stat-card stat-response-card">
+      <div class="stat-icon violet">↗</div>
+      <div class="stat-copy">
+        <div class="stat-label">Avg. Response</div>
+        <div class="stat-value" id="stat-response">—</div>
+        <div class="stat-delta">No data yet</div>
+      </div>
+      <div class="stat-watermark">▥</div>
     </div>
   </div>
-  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+  <div class="dashboard-grid">
     <div>
       <div class="card">
         <div class="card-header">
@@ -2043,14 +2111,14 @@
     /*
      * Super Admin dashboard wording.
      */
-    const dashSub =
-      document.querySelector(
-        '#screen-dashboard .page-sub'
-      );
+    const dashTitle = document.getElementById('dashboardGreeting');
+    const dashSub = document.getElementById('dashboardSub');
 
+    if (dashTitle) {
+      dashTitle.textContent = 'System Command Center';
+    }
     if (dashSub) {
-      dashSub.textContent =
-        'System-wide overview across all BarangAI barangays.';
+      dashSub.textContent = 'System-wide overview across all BarangAI barangays.';
     }
 
     /*
@@ -2280,6 +2348,16 @@
 
     if (roleEl) {
       roleEl.textContent = 'Barangay Admin';
+    }
+
+    const dashTitle = document.getElementById('dashboardGreeting');
+    const dashSub = document.getElementById('dashboardSub');
+    if (dashTitle) {
+      dashTitle.textContent = 'Good day, ' + (user.name || 'Administrator') + '! 👋';
+    }
+    if (dashSub) {
+      const place = user.barangay ? ('Barangay ' + user.barangay) : 'your barangay';
+      dashSub.textContent = "Here's your overview for today. Stay on top of community concerns and keep " + place + ' moving forward.';
     }
 
     const saNav =

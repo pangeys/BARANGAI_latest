@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BarangAI – Resident Portal</title>
-<link rel="stylesheet" href="styles.css?v=20260828-portals1">
-<link rel="stylesheet" href="mobile-responsive.css?v=20260828-portals1"> 
+<link rel="stylesheet" href="styles.css?v=20260828-portals2">
+<link rel="stylesheet" href="mobile-responsive.css?v=20260828-portals2"> 
 
 <style>
   html { background: var(--bg, #f4f6fa); }
@@ -168,24 +168,65 @@
   </div>
 </div>
 
-<!-- ═══════ NAV TABS ═══════ -->
-<div class="res-nav">
-  <div class="res-nav-btn active" id="nav-submit" onclick="showView('submit')">＋ Submit a Complaint</div>
-  <div class="res-nav-btn" id="nav-track" onclick="showView('track')">📋 My Complaints</div>
-</div>
-
-<!-- ═══════ BODY ═══════ -->
-<div class="res-body">
-
-  <!-- ── COMPLAINT FORM ── -->
-  <div id="formView">
-    <div class="res-welcome">
-      <div class="res-welcome-title">Submit a Complaint</div>
-      <div class="res-welcome-sub">Fill in the form below. Your complaint will be sent to your barangay officials for review.</div>
+<!-- ═══════ RESIDENT HERO ═══════ -->
+<section class="resident-hero">
+  <div class="resident-hero-inner">
+    <div class="resident-hero-copy">
+      <div class="resident-hero-kicker">👋 Welcome back,</div>
+      <h1><span id="residentHeroName">Resident</span>!</h1>
+      <p>We're here to help keep our barangay a better place to live. Submit a complaint or track updates — together, we create change.</p>
+      <div class="resident-benefits">
+        <div class="resident-benefit"><span>📄</span><div><b>Easy to Submit</b><small>Quick and simple complaint form</small></div></div>
+        <div class="resident-benefit"><span>🔄</span><div><b>Track Updates</b><small>Monitor status in real time</small></div></div>
+        <div class="resident-benefit"><span>🤝</span><div><b>Stronger Community</b><small>Your voice builds a better barangay</small></div></div>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="card-body">
+    <div class="resident-scene" aria-hidden="true">
+      <div class="scene-sun"></div>
+      <div class="scene-cloud sc1"></div>
+      <div class="scene-cloud sc2"></div>
+      <div class="scene-bird b1">⌁</div>
+      <div class="scene-bird b2">⌁</div>
+      <div class="scene-tree tree-a"><i></i><b></b></div>
+      <div class="scene-tree tree-b"><i></i><b></b></div>
+      <div class="resident-hall">
+        <div class="resident-flag"></div>
+        <div class="resident-roof"></div>
+        <div class="resident-hall-sign">BARANGAY HALL</div>
+        <div class="resident-hall-body"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="resident-hall-steps"></div>
+      </div>
+      <div class="scene-hill hill-a"></div>
+      <div class="scene-hill hill-b"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ WORKSPACE ═══════ -->
+<div class="resident-workspace">
+  <div class="res-nav">
+    <div class="res-nav-btn active" id="nav-submit" onclick="showView('submit')">＋ Submit a Complaint</div>
+    <div class="res-nav-btn" id="nav-track" onclick="showView('track')">📋 My Complaints</div>
+  </div>
+
+  <!-- ═══════ BODY ═══════ -->
+  <div class="res-body">
+
+    <!-- ── COMPLAINT FORM ── -->
+    <div id="formView">
+      <div class="resident-form-grid">
+        <div class="resident-form-main">
+          <div class="res-welcome">
+            <div class="res-welcome-icon">📝</div>
+            <div>
+              <div class="res-welcome-title">Submit a Complaint</div>
+              <div class="res-welcome-sub">Fill out the form below. Your complaint will be sent to your barangay officials for review.</div>
+            </div>
+          </div>
+
+          <div class="card resident-form-card">
+            <div class="card-body">
         <div id="formMsg" class="res-msg"></div>
 
         <div class="frow date-time-row">
@@ -235,11 +276,22 @@
             Submit Complaint →
           </button>
         </div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="resident-tip-panel">
+          <div class="tip-panel-title">Please provide accurate details</div>
+          <div class="tip-divider"></div>
+          <div class="tip-item"><span>📍</span><div><b>Be specific with location</b><p>Include landmarks or nearby places to help us identify the issue.</p></div></div>
+          <div class="tip-item"><span>📷</span><div><b>Add important details</b><p>Explain what happened, when it happened, and how often it occurs.</p></div></div>
+          <div class="tip-item"><span>👥</span><div><b>Help your community</b><p>Clear information helps officials take faster and more effective action.</p></div></div>
+          <div class="tip-community-art" aria-hidden="true"><span>👩</span><span>👨‍🦳</span><span>👨</span><span>👩‍🦱</span><span>🧒</span></div>
+        </aside>
       </div>
     </div>
-  </div>
 
-  <!-- ── SUCCESS SCREEN ── -->
+    <!-- ── SUCCESS SCREEN ── -->
   <div id="successView" class="card" style="display:none;">
     <div class="res-success">
       <div class="res-success-icon">✅</div>
@@ -275,6 +327,7 @@
   </div>
 
 </div><!-- /res-body -->
+</div><!-- /resident-workspace -->
 
 <!-- load classifier scripts (same ones used by admin dashboard) -->
 <script src="js/data.js"></script>
@@ -385,6 +438,8 @@ async function init(){
   // fill header
   document.getElementById('resName').textContent  = user.name;
   document.getElementById('resBrgy').textContent  = user.barangay ? 'Brgy. ' + user.barangay : '';
+  const heroName = document.getElementById('residentHeroName');
+  if (heroName) heroName.textContent = user.name || 'Resident';
   const initials = user.name.trim().split(' ').map(w => w[0]).join('').substring(0,2).toUpperCase();
   document.getElementById('resAvatar').textContent = initials;
 
