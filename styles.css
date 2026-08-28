@@ -815,3 +815,331 @@ body.login-page .pf-overlay { z-index: 999; }
   .auth-submit { min-height: 48px; }
   .auth-divider { margin: 17px 0 14px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   BARANGAI — ROLE-SPECIFIC PORTAL BACKGROUNDS
+   v20260828-portals1
+   Presentation only: no auth, data, ML, or API logic is changed.
+═══════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────
+   RESIDENT PORTAL — "Community Sky"
+   Friendly, open, civic atmosphere with soft sky + community-green
+   accents. Kept intentionally brighter than administrative portals.
+───────────────────────────────────────────────────────────── */
+html:has(body.resident-page) {
+  background: #eef8fc;
+}
+
+body.resident-page {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 8% 14%, rgba(39, 153, 224, .18) 0, rgba(39, 153, 224, 0) 27rem),
+    radial-gradient(circle at 94% 19%, rgba(31, 166, 122, .13) 0, rgba(31, 166, 122, 0) 24rem),
+    radial-gradient(circle at 75% 92%, rgba(41, 111, 220, .10) 0, rgba(41, 111, 220, 0) 30rem),
+    linear-gradient(180deg, #edf8ff 0%, #f8fcff 46%, #eef8f4 100%) !important;
+}
+
+body.resident-page::before {
+  content: '';
+  position: fixed;
+  inset: 58px 0 0;
+  z-index: -2;
+  pointer-events: none;
+  opacity: .55;
+  background-image:
+    radial-gradient(circle, rgba(30, 95, 168, .14) 1.1px, transparent 1.2px),
+    linear-gradient(115deg, transparent 0 64%, rgba(255,255,255,.55) 64% 65%, transparent 65% 100%);
+  background-size: 34px 34px, 100% 100%;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.78), rgba(0,0,0,.22) 74%, transparent);
+}
+
+body.resident-page::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  width: 520px;
+  height: 520px;
+  right: -210px;
+  bottom: -250px;
+  border-radius: 50%;
+  border: 58px solid rgba(36, 133, 210, .055);
+  box-shadow:
+    0 0 0 46px rgba(33, 155, 119, .035),
+    0 0 0 92px rgba(255,255,255,.14);
+}
+
+body.resident-page .res-header {
+  background: rgba(255,255,255,.82) !important;
+  border-bottom-color: rgba(137, 170, 203, .35) !important;
+  box-shadow: 0 8px 28px rgba(29, 79, 123, .08) !important;
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+}
+
+body.resident-page .res-logo {
+  color: #0c315f;
+  letter-spacing: -.035em;
+}
+body.resident-page .res-logo span { color: #2589d8; }
+
+body.resident-page .res-pill {
+  color: #14679a;
+  border: 1px solid rgba(47, 145, 198, .18);
+  background: linear-gradient(135deg, rgba(224,246,255,.95), rgba(227,248,240,.95));
+}
+
+body.resident-page .res-nav,
+body.resident-page .res-body {
+  position: relative;
+  z-index: 1;
+}
+
+body.resident-page .res-nav-btn {
+  border-color: rgba(133, 167, 198, .40);
+  background: rgba(255,255,255,.72);
+  box-shadow: 0 8px 22px rgba(29, 78, 121, .055);
+  backdrop-filter: blur(11px);
+  -webkit-backdrop-filter: blur(11px);
+}
+
+body.resident-page .res-nav-btn.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #247fd2 0%, #1d73c3 58%, #178c93 100%);
+  box-shadow: 0 10px 24px rgba(28, 113, 183, .19);
+}
+
+body.resident-page .card,
+body.resident-page .rc-card {
+  background: rgba(255,255,255,.88);
+  border-color: rgba(137, 169, 199, .34);
+  box-shadow: 0 15px 38px rgba(29, 74, 116, .075);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+}
+
+body.resident-page .res-welcome-title {
+  color: #10365f;
+  letter-spacing: -.03em;
+}
+
+body.resident-page .inp {
+  background: rgba(251,253,255,.84);
+}
+
+body.resident-page .inp:focus {
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(38, 133, 211, .09);
+}
+
+body.resident-page #submitBtn {
+  border: 0;
+  background: linear-gradient(135deg, #257fd2 0%, #176ab8 68%, #14888d 100%);
+  box-shadow: 0 11px 24px rgba(28, 107, 172, .18);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BARANGAY ADMIN PORTAL — "Operations Grid"
+   Practical municipal-blue interface with a subtle operational grid.
+───────────────────────────────────────────────────────────── */
+body.admin-mode {
+  --portal-blue: #1f6fb8;
+  --portal-cyan: #35a7c5;
+  --portal-green: #2f8d70;
+}
+
+body.admin-mode #sidebar {
+  position: relative;
+  background:
+    radial-gradient(circle at 15% 3%, rgba(77, 175, 226, .16), transparent 15rem),
+    linear-gradient(180deg, #0b2c52 0%, #0e3a68 55%, #0a284b 100%);
+}
+
+body.admin-mode #sidebar::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  inset: auto -80px -80px auto;
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  border: 32px solid rgba(74, 166, 217, .055);
+  box-shadow: 0 0 0 31px rgba(255,255,255,.018);
+}
+
+body.admin-mode #sidebar > * { position: relative; z-index: 1; }
+body.admin-mode #sidebar-brand .logo span { color: #66c8ec; }
+body.admin-mode .nav-item.active {
+  border-left-color: #58c0e5;
+  background: linear-gradient(90deg, rgba(67,169,211,.17), rgba(67,169,211,.035));
+}
+
+body.admin-mode #topbar {
+  background: rgba(255,255,255,.88);
+  border-bottom-color: rgba(143, 167, 194, .34);
+  box-shadow: 0 5px 18px rgba(27, 70, 110, .055);
+  backdrop-filter: blur(16px) saturate(130%);
+  -webkit-backdrop-filter: blur(16px) saturate(130%);
+}
+
+body.admin-mode #content {
+  background-color: #eef6fb;
+  background-image:
+    radial-gradient(circle at 92% 5%, rgba(43, 132, 199, .16) 0, rgba(43, 132, 199, 0) 24rem),
+    radial-gradient(circle at 5% 95%, rgba(37, 145, 112, .095) 0, rgba(37, 145, 112, 0) 26rem),
+    linear-gradient(rgba(31,111,184,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(31,111,184,.035) 1px, transparent 1px),
+    linear-gradient(150deg, #f7fbfe 0%, #edf5fa 48%, #f4faf8 100%);
+  background-size: auto, auto, 30px 30px, 30px 30px, auto;
+  background-position: 0 0, 0 0, -1px -1px, -1px -1px, 0 0;
+}
+
+body.admin-mode .page-title { color: #11375e; }
+body.admin-mode .page-sub { color: #59728b; }
+
+body.admin-mode .card,
+body.admin-mode .stat-card {
+  border-color: rgba(132, 164, 194, .34);
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 13px 32px rgba(30, 74, 111, .065);
+  backdrop-filter: blur(9px) saturate(115%);
+  -webkit-backdrop-filter: blur(9px) saturate(115%);
+}
+
+body.admin-mode .stat-card::before {
+  height: 4px;
+  background: linear-gradient(90deg, #1f70b8, #38a9c6);
+}
+body.admin-mode .stat-card.green::before { background: linear-gradient(90deg, #1f865f, #46ad89); }
+body.admin-mode .stat-card.amber::before { background: linear-gradient(90deg, #b87318, #e0a136); }
+body.admin-mode .stat-card.red::before { background: linear-gradient(90deg, #b54040, #d26868); }
+
+body.admin-mode .topbar-action,
+body.admin-mode #hamburger-btn {
+  background: rgba(255,255,255,.76);
+  border-color: rgba(133, 163, 192, .34);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SUPER ADMIN PORTAL — "Command Network"
+   System-wide control gets a distinct indigo / electric-blue identity.
+───────────────────────────────────────────────────────────── */
+body.super-admin-mode {
+  --sa-indigo: #4a55c8;
+  --sa-violet: #7268df;
+  --sa-electric: #4b9fea;
+}
+
+body.super-admin-mode #sidebar {
+  position: relative;
+  background:
+    radial-gradient(circle at 26% 4%, rgba(112, 112, 238, .24), transparent 15rem),
+    radial-gradient(circle at 100% 82%, rgba(53, 152, 221, .13), transparent 17rem),
+    linear-gradient(180deg, #171d49 0%, #202457 50%, #11183d 100%);
+}
+
+body.super-admin-mode #sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .45;
+  background-image:
+    radial-gradient(circle, rgba(159,166,255,.17) 1px, transparent 1.2px),
+    linear-gradient(130deg, transparent 0 70%, rgba(111,119,224,.10) 70% 70.5%, transparent 70.5% 100%);
+  background-size: 25px 25px, 100% 100%;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), rgba(0,0,0,.28));
+}
+body.super-admin-mode #sidebar > * { position: relative; z-index: 1; }
+
+body.super-admin-mode #sidebar-brand .logo span { color: #a7adff; }
+body.super-admin-mode .nav-item.active {
+  border-left-color: #9da5ff;
+  background: linear-gradient(90deg, rgba(126,126,235,.22), rgba(126,126,235,.045));
+}
+
+body.super-admin-mode #topbar {
+  background: rgba(251,251,255,.90);
+  border-bottom-color: rgba(142, 143, 197, .32);
+  box-shadow: 0 6px 20px rgba(37, 38, 91, .065);
+  backdrop-filter: blur(17px) saturate(130%);
+  -webkit-backdrop-filter: blur(17px) saturate(130%);
+}
+
+body.super-admin-mode #content {
+  background-color: #f1f2fb;
+  background-image:
+    radial-gradient(circle at 92% 8%, rgba(100, 96, 218, .17) 0, rgba(100, 96, 218, 0) 25rem),
+    radial-gradient(circle at 8% 88%, rgba(52, 145, 213, .11) 0, rgba(52, 145, 213, 0) 27rem),
+    radial-gradient(circle, rgba(75, 82, 175, .065) 1px, transparent 1.25px),
+    linear-gradient(145deg, #fafaff 0%, #f0f1fb 48%, #f5f8fd 100%);
+  background-size: auto, auto, 27px 27px, auto;
+}
+
+body.super-admin-mode .page-title { color: #252c67; }
+body.super-admin-mode .page-sub { color: #676d91; }
+body.super-admin-mode .breadcrumb b { color: #545fd0; }
+
+body.super-admin-mode .card,
+body.super-admin-mode .stat-card {
+  border-color: rgba(130, 132, 190, .31);
+  background: rgba(255,255,255,.93);
+  box-shadow: 0 14px 34px rgba(42, 43, 102, .075);
+  backdrop-filter: blur(10px) saturate(115%);
+  -webkit-backdrop-filter: blur(10px) saturate(115%);
+}
+
+body.super-admin-mode .stat-card::before {
+  height: 4px;
+  background: linear-gradient(90deg, #505bd0, #6d75e5, #4e9edb);
+}
+body.super-admin-mode .stat-card.green::before { background: linear-gradient(90deg, #397f75, #52a393); }
+body.super-admin-mode .stat-card.amber::before { background: linear-gradient(90deg, #aa7432, #d39a4e); }
+body.super-admin-mode .stat-card.red::before { background: linear-gradient(90deg, #aa4d63, #cd7086); }
+
+body.super-admin-mode .btn-primary {
+  background: linear-gradient(135deg, #555fd1, #4550bd);
+}
+body.super-admin-mode .btn-primary:hover { background: linear-gradient(135deg, #4d56c2, #3d47ad); }
+body.super-admin-mode .btn-ghost { color: #4b55c3; }
+body.super-admin-mode .chip.active,
+body.super-admin-mode .tab.active {
+  color: #4b55c3;
+  border-color: #6670d9;
+}
+
+body.super-admin-mode .topbar-action,
+body.super-admin-mode #hamburger-btn {
+  background: rgba(255,255,255,.78);
+  border-color: rgba(133, 136, 187, .34);
+}
+
+/* ── Shared portal polish ── */
+body.admin-mode .card,
+body.admin-mode .stat-card,
+body.super-admin-mode .card,
+body.super-admin-mode .stat-card,
+body.resident-page .card,
+body.resident-page .rc-card {
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+@media (hover:hover) and (pointer:fine) {
+  body.admin-mode .stat-card:hover,
+  body.super-admin-mode .stat-card:hover {
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.admin-mode .card,
+  body.admin-mode .stat-card,
+  body.super-admin-mode .card,
+  body.super-admin-mode .stat-card,
+  body.resident-page .card,
+  body.resident-page .rc-card {
+    transition: none;
+  }
+}

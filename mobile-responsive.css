@@ -1104,3 +1104,54 @@ video {
   .auth-meta { gap: 8px; }
   .auth-heading h2 { font-size: 28px; }
 }
+
+/* ═══════════════════════════════════════════════════════
+   ROLE BACKGROUNDS — MOBILE TUNING
+   v20260828-portals1
+═══════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  body.admin-mode #content {
+    background-size: auto, auto, 34px 34px, 34px 34px, auto;
+  }
+
+  body.super-admin-mode #content {
+    background-size: auto, auto, 34px 34px, auto;
+  }
+
+  body.admin-mode #topbar,
+  body.super-admin-mode #topbar {
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+  }
+
+  body.resident-page::before {
+    inset: 58px 0 0;
+    opacity: .36;
+    background-size: 42px 42px, 100% 100%;
+  }
+
+  body.resident-page::after {
+    width: 340px;
+    height: 340px;
+    right: -175px;
+    bottom: -175px;
+    border-width: 38px;
+    box-shadow:
+      0 0 0 30px rgba(33,155,119,.03),
+      0 0 0 60px rgba(255,255,255,.11);
+  }
+
+  body.resident-page .res-header {
+    background: rgba(255,255,255,.90) !important;
+  }
+
+  body.resident-page .card,
+  body.resident-page .rc-card,
+  body.admin-mode .card,
+  body.admin-mode .stat-card,
+  body.super-admin-mode .card,
+  body.super-admin-mode .stat-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
