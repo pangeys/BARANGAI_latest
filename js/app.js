@@ -325,8 +325,8 @@ function showClassificationReviewToast(complaint) {
     '<div style="display:flex;gap:10px;align-items:flex-start;">' +
       '<div style="font-size:20px;line-height:1;">⚠️</div>' +
       '<div style="flex:1;min-width:0;">' +
-        '<div style="font-size:13px;font-weight:800;color:#6e4a00;">Classification Review Requested</div>' +
-        '<div style="font-size:11px;color:#6f6250;line-height:1.55;margin-top:4px;">Complaint <b>' + _escHtml(complaint.id) + '</b> was flagged by the resident for category review.</div>' +
+        '<div style="font-size:13px;font-weight:800;color:#6e4a00;">Classification Verification Pending</div>' +
+        '<div style="font-size:11px;color:#6f6250;line-height:1.55;margin-top:4px;">Complaint <b>' + _escHtml(complaint.id) + '</b> has an AI-proposed category awaiting official verification.</div>' +
         '<div style="display:flex;gap:8px;margin-top:10px;">' +
           '<button class="btn btn-primary btn-sm" onclick="viewComplaint(\'' + _escHtml(complaint.id) + '\');document.getElementById(\'classification-review-admin-toast\').remove();">Review Complaint</button>' +
           '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'classification-review-admin-toast\').remove();">Dismiss</button>' +
@@ -913,7 +913,7 @@ async function viewComplaint(id) {
     '<span class="badge ' + c.pb + '">' + _escHtml(c.priority) + ' Priority</span>' +
     '<span class="badge ' + c.sb + '">' + _escHtml(c.status) + '</span>' +
     (String(c.classificationReviewStatus || '').toLowerCase() === 'pending'
-      ? '<span class="badge b-amber">Classification Review Requested</span>'
+      ? '<span class="badge b-amber">Classification Verification Pending</span>'
       : '');
   const resolveBtn = document.getElementById('detail-resolve-btn');
   if (resolveBtn) {
@@ -937,11 +937,17 @@ async function viewComplaint(id) {
     }
   }
   const reviewBanner = document.getElementById('detail-classification-review-banner');
+  const classificationBtn = document.getElementById('detail-edit-classification-btn');
+  if (classificationBtn) {
+    classificationBtn.textContent = String(c.classificationReviewStatus || '').toLowerCase() === 'pending'
+      ? '✓ Verify Classification'
+      : '✎ Edit Classification';
+  }
   if (reviewBanner) {
     const reviewStatus = String(c.classificationReviewStatus || '').toLowerCase();
     if (reviewStatus === 'pending') {
       reviewBanner.style.display = '';
-      reviewBanner.innerHTML = '<b>Resident requested a classification review.</b><br>Review the complaint and use <b>Edit Classification</b> if the current category does not match the concern.';
+      reviewBanner.innerHTML = '<b>Classification verification is pending.</b><br>Review the AI proposal, then verify it as-is or select the correct category.';
     } else if (reviewStatus === 'resolved') {
       reviewBanner.style.display = '';
       reviewBanner.style.background = '#eef8f1';
@@ -994,17 +1000,20 @@ function openClassificationModal(id) {
   const currentEl = document.getElementById('classification-current');
   const selectEl = document.getElementById('classification-category');
   const noteEl = document.getElementById('classification-review-note');
+  const titleEl = document.getElementById('classification-modal-title');
   const msgEl = document.getElementById('classification-modal-msg');
 
   if (idEl) idEl.textContent = id;
   if (currentEl) currentEl.textContent = c.category || 'Unclassified';
   if (selectEl) selectEl.value = CATEGORIES.includes(c.category) ? c.category : CATEGORIES[0];
   if (msgEl) msgEl.textContent = '';
+  const isPending = String(c.classificationReviewStatus || '').toLowerCase() === 'pending';
+  if (titleEl) titleEl.textContent = isPending ? 'Verify Complaint Classification' : 'Edit Complaint Classification';
 
   if (noteEl) {
-    if (String(c.classificationReviewStatus || '').toLowerCase() === 'pending') {
+    if (isPending) {
       noteEl.style.display = '';
-      noteEl.innerHTML = '<b>Resident review request:</b> The resident indicated that the system classification may not match the complaint.';
+      noteEl.innerHTML = '<b>Verification required:</b> Confirm the AI-proposed category as-is or select the correct category. The resident cannot see it until you verify it.';
     } else {
       noteEl.style.display = 'none';
       noteEl.textContent = '';
@@ -1030,7 +1039,7 @@ async function saveClassificationCorrection() {
     return;
   }
 
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
   if (msgEl) msgEl.textContent = '';
 
   try {
@@ -1070,7 +1079,7 @@ async function saveClassificationCorrection() {
       msgEl.textContent = e.message || 'Could not update classification.';
     }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Save Classification'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Verify Classification'; }
   }
 }
 

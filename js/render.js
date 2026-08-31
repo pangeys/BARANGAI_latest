@@ -165,7 +165,7 @@ function renderDashboardStats() {
       '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + mask(c.description) + '</td>' +
       '<td><span class="badge b-blue">' + c.category + '</span>' +
         (String(c.classificationReviewStatus || '').toLowerCase() === 'pending'
-          ? '<div style="margin-top:4px;"><span class="badge b-amber" style="font-size:8px;">Review Requested</span></div>'
+          ? '<div style="margin-top:4px;"><span class="badge b-amber" style="font-size:8px;">Verification Pending</span></div>'
           : '') + '</td>' +
       '<td><span class="badge ' + c.pb + '">' + c.priority + '</span></td>' +
       '<td><span class="badge ' + c.sb + '">' + c.status + '</span></td>' +
@@ -592,7 +592,7 @@ function renderDetailTimeline(complaint) {
   });
   events.push({
     dot: 'done',
-    label: 'AI Classification & Priority Computation',
+    label: 'AI Classification Proposal & Priority Computation',
     meta: formatBarangAIDateTime(filedAt),
     detail: (complaint.classificationReviewOriginalCategory || complaint.category) + ' · ' + (complaint.confidence || '—') + '% relative SVM score · initial automated result'
   });
@@ -600,9 +600,9 @@ function renderDetailTimeline(complaint) {
   if (String(complaint.classificationReviewStatus || '').toLowerCase() === 'pending') {
     events.push({
       dot: 'pend',
-      label: 'Classification Review Requested',
+      label: 'Classification Verification Pending',
       meta: complaint.classificationReviewRequestedAt ? formatBarangAIDateTime(complaint.classificationReviewRequestedAt) : 'Pending review',
-      detail: 'Resident requested barangay verification of the system-generated category'
+      detail: 'The AI-proposed category is awaiting Admin or Super Admin verification'
     });
   } else if (String(complaint.classificationReviewStatus || '').toLowerCase() === 'resolved') {
     events.push({

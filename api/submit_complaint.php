@@ -215,13 +215,15 @@ if ($action === 'my_complaints') {
     $uid = (int)$user['id'];
     $stmt = $db->prepare(
         "SELECT c.complaint_id, c.date_filed, c.created_at, c.description, c.location,
-                c.incident_date, c.incident_time, c.category, c.confidence,
+                c.incident_date, c.incident_time,
+                CASE WHEN cr.status = 'resolved' THEN c.category ELSE NULL END AS category,
+                CASE WHEN cr.status = 'resolved' THEN c.confidence ELSE NULL END AS confidence,
                 c.priority, c.priority_badge, c.officer, c.officer_assigned_at,
                 c.status, c.status_badge, c.resolved_at, c.closed_at, c.close_reason,
                 cr.status AS classification_review_status,
                 cr.requested_at AS classification_review_requested_at,
-                cr.original_category AS classification_review_original_category,
-                cr.corrected_category AS classification_review_corrected_category,
+                CASE WHEN cr.status = 'resolved' THEN cr.original_category ELSE NULL END AS classification_review_original_category,
+                CASE WHEN cr.status = 'resolved' THEN cr.corrected_category ELSE NULL END AS classification_review_corrected_category,
                 cr.corrected_at AS classification_review_corrected_at
            FROM complaints c
            LEFT JOIN classification_reviews cr ON cr.complaint_id = c.complaint_id
@@ -233,6 +235,13 @@ if ($action === 'my_complaints') {
     $res  = $stmt->get_result();
     $list = [];
     while ($row = $res->fetch_assoc()) {
+        // Missing legacy review rows are pending until an authorized official
+        // explicitly verifies the classification.
+        if (($row['classification_review_status'] ?? '') !== 'resolved') {
+            $row['classification_review_status'] = 'pending';
+            $row['category'] = null;
+            $row['confidence'] = null;
+        }
         $row['status_history'] = [];
         $list[] = $row;
     }
@@ -520,6 +529,37 @@ $stmt->bind_param(
 
 if ($stmt->execute()) {
     $stmt->close();
+
+    // Resident submissions always begin with an internal AI proposal that is
+    // hidden from the resident until Admin/Super Admin verification.
+    $reviewStmt = $db->prepare(
+        "INSERT INTO classification_reviews
+            (complaint_id, barangay_id, resident_id, original_category,
+             requested_at, status, corrected_category, corrected_by,
+             corrected_by_name, corrected_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, ?, ?)"
+    );
+    $reviewStmt->bind_param(
+        'siissss',
+        $complaint_id,
+        $barangay_id,
+        $uid,
+        $category,
+        $officialNow,
+        $officialNow,
+        $officialNow
+    );
+    if (!$reviewStmt->execute()) {
+        $err = $reviewStmt->error;
+        $reviewStmt->close();
+        $deleteStmt = $db->prepare('DELETE FROM complaints WHERE complaint_id = ? AND submitted_by = ?');
+        $deleteStmt->bind_param('si', $complaint_id, $uid);
+        $deleteStmt->execute();
+        $deleteStmt->close();
+        $db->close();
+        out(false, ['error' => 'Could not create classification verification: ' . $err], 500);
+    }
+    $reviewStmt->close();
 
     // Initial Open event: server timestamp is the official filed/progress time.
     $historyStmt = $db->prepare(

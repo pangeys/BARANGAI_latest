@@ -478,7 +478,9 @@ if ($method === 'GET' && $type === 'init') {
             'closedAt'          => $row['closed_at'] ?? null,
             'closeReason'       => $row['close_reason'] ?? '',
             'barangay_id' => intval($row['barangay_id']),
-            'classificationReviewStatus' => $row['classification_review_status'] ?? '',
+            'classificationReviewStatus' => ($row['submitted_by'] !== null
+                ? ($row['classification_review_status'] ?? 'pending')
+                : ($row['classification_review_status'] ?? '')),
             'classificationReviewRequestedAt' => $row['classification_review_requested_at'] ?? null,
             'classificationReviewOriginalCategory' => $row['classification_review_original_category'] ?? '',
             'classificationReviewCorrectedCategory' => $row['classification_review_corrected_category'] ?? '',
@@ -1040,6 +1042,7 @@ if ($method === 'PUT' && $action === 'update_classification') {
     }
 
     $oldCategory = (string)($complaint['category'] ?? 'Unclassified');
+    $classificationChanged = $newCategory !== $oldCategory;
     $targetBarangayId = (int)($complaint['barangay_id'] ?? 0);
     $residentId = $complaint['submitted_by'] === null ? null : (int)$complaint['submitted_by'];
     $officialNow = date('Y-m-d H:i:s');
@@ -1098,8 +1101,10 @@ if ($method === 'PUT' && $action === 'update_classification') {
             $userId,
             $userName,
             $targetBarangayId,
-            'classification_corrected',
-            "Complaint $complaintId classification reviewed: '$oldCategory' -> '$newCategory' [priority:$priority score:$score]"
+            $classificationChanged ? 'classification_corrected' : 'classification_verified',
+            $classificationChanged
+                ? "Complaint $complaintId classification corrected: '$oldCategory' -> '$newCategory' [priority:$priority score:$score]"
+                : "Complaint $complaintId classification verified as '$newCategory' [priority:$priority score:$score]"
         );
 
         $conn->commit();

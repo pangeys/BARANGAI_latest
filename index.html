@@ -501,7 +501,7 @@
       <button class="btn btn-secondary btn-sm" onclick="showScreen('complaints',null)">← Back</button>
       <!-- CHANGED: now calls openAssignModal() with the current complaint ID -->
       <button class="btn btn-primary btn-sm" onclick="openAssignModal(_currentDetailComplaintId)">Assign Officer</button>
-      <button class="btn btn-secondary btn-sm" id="detail-edit-classification-btn" onclick="openClassificationModal(_currentDetailComplaintId)">✎ Edit Classification</button>
+      <button class="btn btn-secondary btn-sm" id="detail-edit-classification-btn" onclick="openClassificationModal(_currentDetailComplaintId)">✓ Verify Classification</button>
       <button class="btn btn-secondary btn-sm" id="detail-resolve-btn" style="color:var(--green);border-color:var(--green);">✓ Resolve</button>
       <button class="btn btn-secondary btn-sm" id="detail-close-btn" style="color:var(--text3);">⊘ Close Case</button>
     </div>
@@ -1636,7 +1636,7 @@
   <div class="modal" style="max-width:520px;">
     <div class="modal-header">
       <div>
-        <div class="modal-title">Edit Complaint Classification</div>
+        <div class="modal-title" id="classification-modal-title">Verify Complaint Classification</div>
         <div style="font-size:11px;color:var(--text3);margin-top:3px;" id="classification-modal-id">—</div>
       </div>
       <button class="modal-x" onclick="closeModal('classificationModal')">×</button>
@@ -1648,7 +1648,7 @@
         <div id="classification-current" style="font-size:13px;font-weight:700;color:var(--blue);padding:9px 0;">—</div>
       </div>
       <div class="field" style="margin-bottom:12px;">
-        <div class="label">Correct Category <span>*</span></div>
+        <div class="label">Verified Category <span>*</span></div>
         <select class="inp" id="classification-category">
           <option value="Neighbor Disputes">Neighbor Disputes</option>
           <option value="Money and Debt Disputes">Money and Debt Disputes</option>
@@ -1665,7 +1665,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('classificationModal')">Cancel</button>
-      <button class="btn btn-primary" id="classification-save-btn" onclick="saveClassificationCorrection()">Save Classification</button>
+      <button class="btn btn-primary" id="classification-save-btn" onclick="saveClassificationCorrection()">Verify Classification</button>
     </div>
   </div>
 </div>

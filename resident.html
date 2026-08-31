@@ -321,10 +321,10 @@
       <div class="res-success-title">Complaint Submitted!</div>
       <div style="margin-bottom:12px;">
         <span class="res-success-ref" id="successRef">RES-2026-00001</span>
-        <span class="res-success-cat" id="successCat"></span>
+        <span class="res-success-cat" id="successCat">Classification Pending Verification</span>
       </div>
       <div class="res-success-sub">
-        Your complaint has been received and classified by the AI system.<br>
+        Your complaint has been received. Its AI-proposed category is pending verification by an Admin or Super Admin.<br>
         Please save your <strong>complaint number</strong> above for future reference.<br>
         Barangay officials will review and act on it as soon as possible.
       </div>
@@ -725,7 +725,9 @@ function renderComplaintCard(c){
   return '<div class="rc-card">' +
     '<div class="rc-top">' +
       '<span class="rc-id">' + esc(c.complaint_id) + '</span>' +
-      '<span class="badge b-blue" style="font-size:10px;">' + esc(c.category || 'Unclassified') + '</span>' +
+      (String(c.classification_review_status || '').toLowerCase() === 'resolved'
+        ? '<span class="badge b-blue" style="font-size:10px;">' + esc(c.category || 'Unclassified') + '</span>'
+        : '<span class="badge b-amber" style="font-size:10px;">Classification Pending Verification</span>') +
       '<span class="badge ' + badgeCls + '" style="font-size:10px;">' + esc(c.status) + '</span>' +
       '<span class="rc-date">Filed: ' + esc(filed) + ' PHT</span>' +
     '</div>' +
@@ -746,9 +748,9 @@ function renderClassificationReviewControl(c){
   const status = String(c.classification_review_status || '').toLowerCase();
   const cid = esc(c.complaint_id || '');
 
-  if (status === 'pending') {
+  if (status !== 'resolved') {
     return '<div style="margin:10px 0 2px;padding:10px 12px;border-radius:9px;background:#fff8e8;border:1px solid #f2d18a;font-size:11px;color:#7a5200;line-height:1.55;">' +
-      '<b>Classification review requested.</b><br>Your barangay has been notified and will verify the system-generated category.' +
+      '<b>Classification pending verification.</b><br>An Admin or Super Admin must verify the AI-proposed category before it becomes visible to you.' +
       '</div>';
   }
 
@@ -915,7 +917,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
       _lastComplaintSyncStamp = null;
 
       document.getElementById('successRef').textContent = data.complaint_no;
-      document.getElementById('successCat').textContent = category || 'Unclassified';
+      document.getElementById('successCat').textContent = 'Classification Pending Verification';
 
       // A successful submission must always leave a fresh form behind.
       // This prevents old incident details from reappearing when the resident
