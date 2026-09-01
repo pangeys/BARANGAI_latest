@@ -84,36 +84,41 @@ function renderDashboardDonut() {
   const legendEl = document.getElementById('dashboard-legend');
   if (!donutEl || !legendEl) return;
 
-  /* Use live complaints if any; fall back to dataset counts; fall back to real sample proportions */
+  /*
+   * Dashboard category values must represent actual complaint records in the
+   * current Admin/Super Admin scope. The model-training dataset is intentionally
+   * not used as a fallback here because those records are not live cases.
+   */
   const counts = {};
   CATEGORIES.forEach(c => { counts[c] = 0; });
 
-  if (complaints.length > 0) {
-    complaints.forEach(c => { counts[c.category] = (counts[c.category] || 0) + 1; });
-  } else if (datasetRows.length > 0) {
-    datasetRows.forEach(r => {
-      const m = mapToMergedCategory(r.category);
-      if (m) counts[m]++;
+  complaints.forEach(c => {
+    if (Object.prototype.hasOwnProperty.call(counts, c.category)) {
+      counts[c.category]++;
+    }
+  });
+
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  /* Percentages are still used internally only to size the donut slices. */
+  if (total > 0) {
+    let conic = '', cum = 0;
+    CATEGORIES.forEach(cat => {
+      const pct = (counts[cat] / total) * 100;
+      conic += CAT_COLORS[cat] + ' ' + cum.toFixed(2) + '% ' + (cum + pct).toFixed(2) + '%,';
+      cum += pct;
     });
+    donutEl.style.background = 'conic-gradient(' + conic.slice(0, -1) + ')';
   } else {
-    /* Final 3,669-record modeling distribution (Chapter 4 source). */
-    DATASET_CONSOLIDATION.forEach(r => { counts[r.merged] = r.total; });
+    donutEl.style.background = 'var(--border)';
   }
 
-  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
-  let conic = '', cum = 0;
-  CATEGORIES.forEach(cat => {
-    const pct = (counts[cat] / total) * 100;
-    conic += CAT_COLORS[cat] + ' ' + cum.toFixed(2) + '% ' + (cum + pct).toFixed(2) + '%,';
-    cum += pct;
-  });
-  donutEl.style.background = 'conic-gradient(' + conic.slice(0, -1) + ')';
-
+  /* Adviser-requested revision: show numerical complaint counts, not percentages. */
   legendEl.innerHTML = CATEGORIES.map(cat => {
-    const pct = Math.round((counts[cat] / total) * 100);
+    const count = counts[cat] || 0;
     return '<div class="legend-item">' +
       '<div class="legend-dot" style="background:' + CAT_COLORS[cat] + '"></div>' +
-      cat.split(' / ')[0].split(' & ')[0] + ' (' + pct + '%)</div>';
+      cat.split(' / ')[0].split(' & ')[0] + ' (' + count + ')</div>';
   }).join('');
 }
 
