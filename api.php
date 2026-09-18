@@ -985,13 +985,13 @@ if ($method === 'PUT' && $action === 'update_classification') {
     $score = (int)($body['score'] ?? -1);
 
     $allowedCategories = [
-        'Neighbor Disputes',
-        'Money and Debt Disputes',
-        'Family Matters',
-        'Petty Criminal Offenses',
-        'Property Disputes',
-        'Contract Disputes'
-    ];
+    'Neighbor Disputes',
+    'Money/Debt Disputes',
+    'Family Matters',
+    'Petty Criminal Offenses',
+    'Property Disputes',
+    'Contract Disputes'
+];
 
     if ($complaintId === '' || !in_array($newCategory, $allowedCategories, true)) {
         respond(['success' => false, 'error' => 'A valid complaint and one of the six KP categories are required.'], 422);
