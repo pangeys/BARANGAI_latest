@@ -6,10 +6,25 @@ ini_set('display_errors', 0);
 // Keep PHP-generated timestamps consistent with the barangay location.
 date_default_timezone_set('Asia/Manila');
 
-define('DB_HOST', 'sql113.infinityfree.com');
-define('DB_USER', 'if0_42015849');
-define('DB_PASS', 'thesisdemarizo');
-define('DB_NAME', 'if0_42015849_bai');
+$webHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? '')[0]);
+
+if ($webHost === 'localhost' || $webHost === '127.0.0.1') {
+
+    // LOCAL XAMPP DATABASE
+    define('DB_HOST', '127.0.0.1');
+    define('DB_USER', 'root');
+    define('DB_PASS', '');
+    define('DB_NAME', 'barangai_db');
+
+} else {
+
+    // INFINITYFREE DATABASE
+    define('DB_HOST', 'sql113.infinityfree.com');
+    define('DB_USER', 'if0_42015849');
+    define('DB_PASS', 'thesisdemarizo');
+    define('DB_NAME', 'if0_42015849_bai');
+
+}
 
 // BarangAI 2FA secret-encryption key.
 // Keep this value private and never expose it to the frontend.
