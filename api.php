@@ -930,11 +930,50 @@ if ($method === 'DELETE' && $action === 'delete_officer') {
 
 if ($method === 'POST' && $action === 'add_complaint') {
     $d = $body['data'] ?? [];
+
+    /*
+     * Normal Admin: use the barangay attached to the logged-in account.
+     * Super Admin: require the barangay selected in the global top selector.
+     */
+    if ($isSuperAdmin) {
+        $bid = (int)($d['barangay_id'] ?? 0);
+
+        if ($bid <= 0) {
+            respond([
+                'success' => false,
+                'error' => 'Please select a barangay before creating a complaint.'
+            ], 422);
+        }
+
+        // Never trust the browser-supplied ID without checking it exists.
+        $barangayCheck = $conn->prepare(
+            "SELECT id FROM barangays WHERE id = ? LIMIT 1"
+        );
+        $barangayCheck->bind_param('i', $bid);
+        $barangayCheck->execute();
+        $barangayExists = $barangayCheck->get_result()->fetch_assoc();
+        $barangayCheck->close();
+
+        if (!$barangayExists) {
+            respond([
+                'success' => false,
+                'error' => 'Selected barangay does not exist.'
+            ], 422);
+        }
+    } else {
+        $bid = $barangay_id;
+    }
+
+    /*
+     * Allocate the visible complaint number only after validation succeeds,
+     * so rejected Super Admin requests do not consume IDs.
+     */
     $conn->begin_transaction();
     $conn->query("UPDATE id_counter SET next_id = next_id + 1 WHERE id = 1");
     $r      = $conn->query("SELECT next_id FROM id_counter WHERE id = 1");
     $nextId = intval($r->fetch_assoc()['next_id']);
     $conn->commit();
+
     $num = $nextId - 1;
     $cid = '#' . str_pad($num, 3, '0', STR_PAD_LEFT);
     $dateFiled = (string)($d['date_filed']  ?? date('M j'));
@@ -952,25 +991,28 @@ if ($method === 'POST' && $action === 'add_complaint') {
     $officer   = (string)($d['officer']     ?? '—');
     $status    = (string)($d['status']      ?? 'Open');
     $sb        = (string)($d['sb']          ?? 'b-gray');
-    if ($isSuperAdmin) {
-        respond([
-            'success' => false,
-            'error' => 'Super Admin must explicitly select a barangay when creating a complaint.'
-        ], 422);
-    }
-
-    $bid = $barangay_id;
     $createdAt = date('Y-m-d H:i:s');
+
     $sql = "INSERT INTO complaints (complaint_id, date_filed, description, location, incident_date, incident_time, complainant, affected, category, confidence, score, priority, priority_badge, officer, status, status_badge, barangay_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param('sssssssisissssssis', $cid, $dateFiled, $desc, $loc, $incDate, $incTime, $comp, $affected, $cat, $conf, $score, $priority, $pb, $officer, $status, $sb, $bid, $createdAt);
     $ok = $stmt->execute();
     $stmt->close();
+
     if ($ok) {
         logComplaintStatusHistory($conn, $cid, $bid, $status, $userId, $userName, 'admin_created');
-        respond(["success" => true, "id" => $cid]);
+        respond([
+            'success' => true,
+            'id' => $cid,
+            'barangay_id' => $bid,
+            'created_at' => $createdAt
+        ]);
     }
-    else respond(["success" => false, "error" => $conn->error], 500);
+
+    respond([
+        'success' => false,
+        'error' => $conn->error
+    ], 500);
 }
 
 /* ════════════════════════════════════════════════════
@@ -1632,7 +1674,7 @@ if ($method === 'POST' && $action === 'add_notification') {
             respond([
                 'success' => false,
                 'error' =>
-                    'Super Admin notifications require an explicit target scope.'
+                    'Super Admin notifications require a valid barangay_id.'
             ], 422);
         }
 

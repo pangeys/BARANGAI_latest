@@ -356,27 +356,54 @@ function startDashboardLiveSync() {
 
 async function addComplaint(data) {
   const dateFiled = new Date().toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+
   try {
-    const res    = await fetch(API_URL, {
-      method:  'POST',
+    const res = await fetch(API_URL, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ action: 'add_complaint', data: { ...data, date_filed: dateFiled } }),
+      body: JSON.stringify({
+        action: 'add_complaint',
+        data: { ...data, date_filed: dateFiled }
+      }),
     });
-    const result = await res.json();
-    if (result.success) {
-      const newComplaint = { id: result.id, date: dateFiled, ...data };
-      complaints.unshift(newComplaint);
-      renderAll();
-      return newComplaint;
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok || !result.success) {
+      throw new Error(
+        result.error || 'Complaint could not be saved to the database.'
+      );
     }
+
+    const newComplaint = {
+      id: result.id,
+      date: dateFiled,
+      ...data,
+      createdAt: result.created_at || new Date().toISOString(),
+      barangay_id: Number(
+        result.barangay_id ?? data.barangay_id ?? 0
+      )
+    };
+
+    complaints.unshift(newComplaint);
+
+    // Keep the Super Admin master list in sync immediately so changing the
+    // barangay selector does not make a newly-saved complaint disappear.
+    if ((window.CURRENT_USER || {}).role === 'super_admin') {
+      _allComplaints.unshift(newComplaint);
+    }
+
+    renderAll();
+    return newComplaint;
+
   } catch (err) {
-    console.warn('BICTS: DB save failed, using in-memory fallback.', err);
+    console.error('BICTS: Complaint save failed.', err);
+    alert(
+      'Complaint could not be saved. ' +
+      (err.message || 'Please try again.')
+    );
+    return null;
   }
-  const id = '#' + String(nextId).padStart(3, '0');
-  complaints.unshift({ id, date: dateFiled, ...data });
-  nextId++;
-  renderAll();
-  return complaints[0];
 }
 
 async function resolveComplaint(id) {
@@ -398,7 +425,7 @@ async function resolveComplaint(id) {
     c.resolvedAt = result.changed_at || c.resolvedAt;
     await loadComplaintStatusHistory(id, c);
     renderAll();
-    await pushNotif('Complaint ' + id + ' (' + c.category + ') marked as Resolved.', 'success');
+    await pushNotif('Complaint ' + id + ' (' + c.category + ') marked as Resolved.', 'success', Number(c.barangay_id || 0));
   } catch (err) {
     console.warn('BICTS: DB status sync failed.', err);
   }
@@ -425,7 +452,7 @@ async function closeComplaint(id, reason) {
     c.resolvedAt = null;
     await loadComplaintStatusHistory(id, c);
     renderAll();
-    await pushNotif('Complaint ' + id + ' (' + c.category + ') closed — ' + c.closeReason + '.', 'info');
+    await pushNotif('Complaint ' + id + ' (' + c.category + ') closed — ' + c.closeReason + '.', 'info', Number(c.barangay_id || 0));
   } catch (err) {
     console.warn('BICTS: DB close sync failed.', err);
   }
@@ -474,9 +501,9 @@ async function advanceStatus(id) {
     renderAll();
 
     if (nextStatus === 'Resolved') {
-      await pushNotif('Complaint ' + id + ' (' + c.category + ') marked as Resolved.', 'success');
+      await pushNotif('Complaint ' + id + ' (' + c.category + ') marked as Resolved.', 'success', Number(c.barangay_id || 0));
     } else {
-      await pushNotif('Complaint ' + id + ' moved to ' + nextStatus + '.', 'info');
+      await pushNotif('Complaint ' + id + ' moved to ' + nextStatus + '.', 'info', Number(c.barangay_id || 0));
     }
   } catch (err) {
     console.warn('BICTS: DB status sync failed.', err);
@@ -1155,28 +1182,77 @@ async function wizardSubmit() {
   const description = document.getElementById('w-description')?.value || '';
   const affected    = document.getElementById('w-affected')?.value    || '1';
   const complainantInput = (document.getElementById('w-complainant')?.value || '').trim();
+
   if (!_runtimeSettings.allow_anonymous && !complainantInput) {
     alert('Anonymous complaints are disabled. Please provide the complainant name.');
     return;
   }
+
+  const currentUser = window.CURRENT_USER || {};
+  let targetBarangayId = Number(currentUser.barangay_id || 0);
+
+  // A Super Admin has no fixed barangay. Use the existing top selector as the
+  // explicit target for both the complaint and its notification.
+  if (currentUser.role === 'super_admin') {
+    targetBarangayId =
+      typeof getSelectedSuperAdminBarangayId === 'function'
+        ? Number(getSelectedSuperAdminBarangayId())
+        : 0;
+
+    if (targetBarangayId <= 0) {
+      alert('Please select a barangay from the top selector before submitting a complaint.');
+      return;
+    }
+  }
+
   const cat         = _lastAiResult.cat;
   const conf        = _lastAiResult.conf;
   const ahp         = computeAHPScore(cat, affected, description);
   const priInfo     = priorityLabel(ahp.score);
   const submitBtn   = document.getElementById('wizard-submit');
-  if (submitBtn) { submitBtn.textContent = 'Saving…'; submitBtn.disabled = true; }
-  await addComplaint({
+
+  if (submitBtn) {
+    submitBtn.textContent = 'Saving…';
+    submitBtn.disabled = true;
+  }
+
+  const savedComplaint = await addComplaint({
     description,
     location:    document.getElementById('w-location')?.value    || '',
     date:        document.getElementById('w-date')?.value        || '',
     time:        document.getElementById('w-time')?.value        || '',
     complainant: complainantInput || 'Anonymous',
-    affected, category: cat, confidence: conf,
-    score: ahp.score.toString(), priority: priInfo.label,
-    pb: priInfo.badge, officer: '—', status: 'Open', sb: 'b-gray',
+    affected,
+    category: cat,
+    confidence: conf,
+    score: ahp.score.toString(),
+    priority: priInfo.label,
+    pb: priInfo.badge,
+    officer: '—',
+    status: 'Open',
+    sb: 'b-gray',
+    barangay_id: targetBarangayId,
   });
-  await pushNotif('New complaint — ' + cat + ' · Priority: ' + priInfo.label, 'info');
-  if (submitBtn) { submitBtn.textContent = '✓ Submit Complaint'; submitBtn.disabled = false; }
+
+  if (!savedComplaint) {
+    if (submitBtn) {
+      submitBtn.textContent = '✓ Submit Complaint';
+      submitBtn.disabled = false;
+    }
+    return;
+  }
+
+  await pushNotif(
+    'New complaint — ' + cat + ' · Priority: ' + priInfo.label,
+    'info',
+    targetBarangayId
+  );
+
+  if (submitBtn) {
+    submitBtn.textContent = '✓ Submit Complaint';
+    submitBtn.disabled = false;
+  }
+
   wizardStep = 5;
   renderWizardStep();
 }
@@ -2239,7 +2315,7 @@ async function deleteOfficer(id) {
       _officers = _officers.filter(x => String(x.id) !== String(id));
       complaints.forEach(c => { if (String(c.officer_id) === String(id)) { c.officer = '—'; c.officer_id = 0; } });
       renderOfficersTable(); renderOfficerStats(); renderAll();
-      await pushNotif('Officer "' + o.name + '" removed.', 'info');
+      await pushNotif('Officer "' + o.name + '" removed.', 'info', Number(o.barangay_id || 0));
     } else { alert(result.error || 'Could not delete officer. Please try again.'); }
   } catch (err) { console.warn('BICTS: Officer delete failed.', err); alert('Network error — please try again.'); }
 }
@@ -2321,7 +2397,7 @@ async function submitAssignOfficer() {
       if (c && typeof renderDetailTimeline === 'function') renderDetailTimeline(c);
       renderAll();
       closeModal('assignModal');
-      await pushNotif('Officer "' + officerName + '" assigned to complaint ' + _assignComplaintId + '.', 'success');
+      await pushNotif('Officer "' + officerName + '" assigned to complaint ' + _assignComplaintId + '.', 'success', Number(c?.barangay_id || 0));
     } else {
       if (msgEl) { msgEl.textContent = result.error || 'Assignment failed — please try again.'; msgEl.style.color = 'var(--red,#dc2626)'; }
     }
